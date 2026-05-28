@@ -1,0 +1,70 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+CONFIG_FILE="${XDG_CONFIG_HOME:-$HOME/.config}/gravatar-avatar-sync/email"
+AVATAR_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/avatars"
+AVATAR_BASENAME="gravatar-avatar"
+
+if [[ $# -gt 0 ]]; then
+  EMAIL="$1"
+elif [[ -n "${GRAVATAR_EMAIL:-}" ]]; then
+  EMAIL="$GRAVATAR_EMAIL"
+elif [[ -f "$CONFIG_FILE" ]]; then
+  EMAIL="$(<"$CONFIG_FILE")"
+else
+  EMAIL="$(git config --global --get user.email || true)"
+fi
+
+EMAIL="$(printf '%s' "$EMAIL" | tr '[:upper:]' '[:lower:]' | xargs)"
+if [[ -z "$EMAIL" ]]; then
+  echo "No email found. Set GRAVATAR_EMAIL or write one to $CONFIG_FILE."
+  exit 1
+fi
+
+HASH="$(printf '%s' "$EMAIL" | md5sum | awk '{print $1}')"
+SIZE="${GRAVATAR_SIZE:-512}"
+DEFAULT_STYLE="${GRAVATAR_DEFAULT:-mp}"
+URL="https://www.gravatar.com/avatar/${HASH}?s=${SIZE}&d=${DEFAULT_STYLE}"
+
+mkdir -p "$AVATAR_DIR"
+TMP_FILE="$(mktemp)"
+trap 'rm -f "$TMP_FILE"' EXIT
+
+curl -fsSL "$URL" -o "$TMP_FILE"
+
+MIME_TYPE="$(file --mime-type -b "$TMP_FILE")"
+case "$MIME_TYPE" in
+  image/png) EXT="png" ;;
+  image/jpeg) EXT="jpg" ;;
+  image/gif) EXT="gif" ;;
+  image/webp) EXT="webp" ;;
+  *)
+    echo "Unsupported image type from Gravatar: $MIME_TYPE"
+    exit 1
+    ;;
+esac
+
+FINAL_FILE="${AVATAR_DIR}/${AVATAR_BASENAME}.${EXT}"
+install -m 0644 "$TMP_FILE" "$FINAL_FILE"
+
+install -m 0644 "$FINAL_FILE" "$HOME/.face"
+install -m 0644 "$FINAL_FILE" "$HOME/.face.icon"
+
+USER_PATH="/org/freedesktop/Accounts/User$(id -u)"
+if ! gdbus call --system \
+  --dest org.freedesktop.Accounts \
+  --object-path "$USER_PATH" \
+  --method org.freedesktop.Accounts.User.SetIconFile "$FINAL_FILE" >/dev/null; then
+  if [[ -S /run/host/run/dbus/system_bus_socket ]]; then
+    DBUS_SYSTEM_BUS_ADDRESS=unix:path=/run/host/run/dbus/system_bus_socket \
+      gdbus call --system \
+      --dest org.freedesktop.Accounts \
+      --object-path "$USER_PATH" \
+      --method org.freedesktop.Accounts.User.SetIconFile "$FINAL_FILE" >/dev/null
+  else
+    echo "Unable to reach system D-Bus to set AccountsService icon."
+    exit 1
+  fi
+fi
+
+echo "Updated avatar from Gravatar for $EMAIL"

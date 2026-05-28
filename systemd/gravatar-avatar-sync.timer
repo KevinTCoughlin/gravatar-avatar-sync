@@ -1,0 +1,11 @@
+[Unit]
+Description=Periodic Gravatar avatar sync
+
+[Timer]
+OnBootSec=2m
+OnUnitActiveSec=12h
+Persistent=true
+Unit=gravatar-avatar-sync.service
+
+[Install]
+WantedBy=timers.target
