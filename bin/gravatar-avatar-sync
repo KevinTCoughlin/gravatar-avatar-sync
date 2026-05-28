@@ -1,30 +1,54 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-CONFIG_FILE="${XDG_CONFIG_HOME:-$HOME/.config}/gravatar-avatar-sync/email"
+CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/gravatar-avatar-sync"
+EMAIL_CONFIG_FILE="$CONFIG_DIR/email"
+USERNAME_CONFIG_FILE="$CONFIG_DIR/username"
 AVATAR_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/avatars"
 AVATAR_BASENAME="gravatar-avatar"
+SIZE="${GRAVATAR_SIZE:-512}"
+DEFAULT_STYLE="${GRAVATAR_DEFAULT:-mp}"
+SOURCE_LABEL=""
+USERNAME="${GRAVATAR_USERNAME:-}"
+EMAIL=""
 
 if [[ $# -gt 0 ]]; then
   EMAIL="$1"
 elif [[ -n "${GRAVATAR_EMAIL:-}" ]]; then
   EMAIL="$GRAVATAR_EMAIL"
-elif [[ -f "$CONFIG_FILE" ]]; then
-  EMAIL="$(<"$CONFIG_FILE")"
+elif [[ -f "$EMAIL_CONFIG_FILE" ]]; then
+  EMAIL="$(<"$EMAIL_CONFIG_FILE")"
 else
   EMAIL="$(git config --global --get user.email || true)"
 fi
 
-EMAIL="$(printf '%s' "$EMAIL" | tr '[:upper:]' '[:lower:]' | xargs)"
-if [[ -z "$EMAIL" ]]; then
-  echo "No email found. Set GRAVATAR_EMAIL or write one to $CONFIG_FILE."
-  exit 1
+if [[ -z "$USERNAME" && -f "$USERNAME_CONFIG_FILE" ]]; then
+  USERNAME="$(<"$USERNAME_CONFIG_FILE")"
 fi
+USERNAME="$(printf '%s' "$USERNAME" | xargs)"
 
-HASH="$(printf '%s' "$EMAIL" | md5sum | awk '{print $1}')"
-SIZE="${GRAVATAR_SIZE:-512}"
-DEFAULT_STYLE="${GRAVATAR_DEFAULT:-mp}"
-URL="https://www.gravatar.com/avatar/${HASH}?s=${SIZE}&d=${DEFAULT_STYLE}"
+if [[ -n "$USERNAME" ]]; then
+  PROFILE_URL="https://gravatar.com/${USERNAME}.json"
+  PROFILE_JSON="$(curl -fsSL "$PROFILE_URL")"
+  URL="$(printf '%s' "$PROFILE_JSON" | grep -o '"value":"[^"]*"' | head -n 1 | cut -d '"' -f 4 | sed 's#\\/#/#g')"
+  if [[ -z "$URL" ]]; then
+    URL="$(printf '%s' "$PROFILE_JSON" | grep -o '"thumbnailUrl":"[^"]*"' | head -n 1 | cut -d '"' -f 4 | sed 's#\\/#/#g')"
+  fi
+  if [[ -z "$URL" ]]; then
+    echo "Could not find photo URL in Gravatar profile for username: $USERNAME"
+    exit 1
+  fi
+  SOURCE_LABEL="$USERNAME"
+else
+  EMAIL="$(printf '%s' "$EMAIL" | tr '[:upper:]' '[:lower:]' | xargs)"
+  if [[ -z "$EMAIL" ]]; then
+    echo "No identity found. Set GRAVATAR_USERNAME, GRAVATAR_EMAIL, or config files in $CONFIG_DIR."
+    exit 1
+  fi
+  HASH="$(printf '%s' "$EMAIL" | md5sum | awk '{print $1}')"
+  URL="https://www.gravatar.com/avatar/${HASH}?s=${SIZE}&d=${DEFAULT_STYLE}"
+  SOURCE_LABEL="$EMAIL"
+fi
 
 mkdir -p "$AVATAR_DIR"
 TMP_FILE="$(mktemp)"
@@ -67,4 +91,4 @@ if ! gdbus call --system \
   fi
 fi
 
-echo "Updated avatar from Gravatar for $EMAIL"
+echo "Updated avatar from Gravatar for $SOURCE_LABEL"
