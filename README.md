@@ -2,6 +2,7 @@
 
 [![GitHub Sponsors](https://img.shields.io/github/sponsors/KevinTCoughlin)](https://github.com/sponsors/KevinTCoughlin)
 [![Ko-fi](https://img.shields.io/badge/Ko--fi-support-ff5e5b?logo=ko-fi&logoColor=white)](https://ko-fi.com/kevintcoughlin)
+[![CI](https://github.com/KevinTCoughlin/gravatar-avatar-sync/actions/workflows/ci.yml/badge.svg)](https://github.com/KevinTCoughlin/gravatar-avatar-sync/actions/workflows/ci.yml)
 
 Small Linux utility to sync your local account avatar from Gravatar on a schedule.
 
@@ -78,6 +79,18 @@ Optional environment variables:
 ```bash
 ./uninstall.sh
 ```
+
+## CI
+
+Every push and pull request runs the following checks via [GitHub Actions](.github/workflows/ci.yml):
+
+| Stage | What it does |
+|---|---|
+| **ShellCheck** | Lints `bin/gravatar-avatar-sync`, `install.sh`, and `uninstall.sh` with [ShellCheck](https://www.shellcheck.net/) |
+| **Unit Tests** | Runs `tests/unit.sh` — tests pure functions (avatar-size detection, email normalisation, hash generation, URL construction) |
+| **Integration Tests** | Runs `tests/integration.sh` — exercises the full script with mocked network and D-Bus calls (CI-safe, no real internet or display required) |
+
+All three stages must pass before a PR can be merged.
 
 ## Support
 
