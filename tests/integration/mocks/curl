@@ -14,7 +14,7 @@ while [[ $# -gt 0 ]]; do
       shift
       ;;
     *)
-      if [[ "$1" == http://* || "$1" == https://* ]]; then
+      if [[ "$1" =~ ^https?:// ]]; then
         url="$1"
       fi
       shift

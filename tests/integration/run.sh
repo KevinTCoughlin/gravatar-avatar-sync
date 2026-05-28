@@ -98,7 +98,7 @@ while True:
     time.sleep(1)
 PY
   SOCKET_PID=$!
-  for ((i=0; i<10; i++)); do
+  for ((attempt=0; attempt<10; attempt++)); do
     [[ -S "$HOST_DBUS_SOCKET" ]] && return 0
     sleep 0.1
   done
