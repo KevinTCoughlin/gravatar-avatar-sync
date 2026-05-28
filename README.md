@@ -21,6 +21,14 @@ It updates:
 
 ## Install
 
+One-liner (Fedora/Linux):
+
+```bash
+git clone https://github.com/KevinTCoughlin/gravatar-avatar-sync.git && cd gravatar-avatar-sync && ./install.sh && mkdir -p ~/.config/gravatar-avatar-sync && printf '%s\n' 'your-gravatar-username' > ~/.config/gravatar-avatar-sync/username && systemctl --user start gravatar-avatar-sync.service
+```
+
+Step-by-step:
+
 ```bash
 git clone https://github.com/KevinTCoughlin/gravatar-avatar-sync.git
 cd gravatar-avatar-sync
