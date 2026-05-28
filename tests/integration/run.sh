@@ -93,10 +93,16 @@ except FileNotFoundError:
     pass
 s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
 s.bind(path)
-time.sleep(3)
+while True:
+    time.sleep(1)
 PY
   SOCKET_PID=$!
-  sleep 1
+  for _ in $(seq 1 20); do
+    [[ -S "$HOST_DBUS_SOCKET" ]] && return 0
+    sleep 0.1
+  done
+  echo "Timed out waiting for fallback D-Bus socket to be ready"
+  return 1
 }
 
 test_success_fallback_dbus() {
