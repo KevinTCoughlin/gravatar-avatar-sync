@@ -5,6 +5,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 TARGET_SCRIPT="$REPO_ROOT/bin/gravatar-avatar-sync"
 MOCK_DIR="$SCRIPT_DIR/mocks"
+SOCKET_READY_MAX_ATTEMPTS=10
+SOCKET_READY_SLEEP_SECONDS=0.1
 
 pass_count=0
 fail_count=0
@@ -98,9 +100,9 @@ while True:
     time.sleep(1)
 PY
   SOCKET_PID=$!
-  for ((attempt=0; attempt<10; attempt++)); do
+  for ((attempt=0; attempt<SOCKET_READY_MAX_ATTEMPTS; attempt++)); do
     [[ -S "$HOST_DBUS_SOCKET" ]] && return 0
-    sleep 0.1
+    sleep "$SOCKET_READY_SLEEP_SECONDS"
   done
   echo "Timed out waiting for fallback D-Bus socket to be ready"
   return 1

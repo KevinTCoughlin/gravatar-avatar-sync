@@ -2,6 +2,7 @@
 set -euo pipefail
 
 if [[ "$1" == "-m" ]]; then
+  [[ $# -ge 2 ]] || { echo "install mock: -m requires a mode value" >&2; exit 2; }
   shift 2
 fi
 

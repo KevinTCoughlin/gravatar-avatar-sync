@@ -7,8 +7,16 @@ url=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     -o)
+      [[ $# -ge 2 ]] || { echo "curl mock: -o requires a value" >&2; exit 2; }
       output_file="$2"
       shift 2
+      ;;
+    --header|-H|--max-time|--connect-timeout|--request|-X|--user|-u|--data|-d)
+      [[ $# -ge 2 ]] || { echo "curl mock: $1 requires a value" >&2; exit 2; }
+      shift 2
+      ;;
+    --*=*)
+      shift
       ;;
     -*)
       shift
