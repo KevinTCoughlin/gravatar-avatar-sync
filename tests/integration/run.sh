@@ -93,7 +93,7 @@ except FileNotFoundError:
     pass
 s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
 s.bind(path)
-time.sleep(15)
+time.sleep(3)
 PY
   SOCKET_PID=$!
   sleep 1
