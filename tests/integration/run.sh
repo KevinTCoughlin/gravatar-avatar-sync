@@ -93,11 +93,12 @@ except FileNotFoundError:
     pass
 s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
 s.bind(path)
+s.listen(1)
 while True:
     time.sleep(1)
 PY
   SOCKET_PID=$!
-  for ((i=0; i<20; i++)); do
+  for ((i=0; i<10; i++)); do
     [[ -S "$HOST_DBUS_SOCKET" ]] && return 0
     sleep 0.1
   done
