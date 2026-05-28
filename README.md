@@ -2,6 +2,9 @@
 
 [![GitHub Sponsors](https://img.shields.io/github/sponsors/KevinTCoughlin)](https://github.com/sponsors/KevinTCoughlin)
 [![Ko-fi](https://img.shields.io/badge/Ko--fi-support-ff5e5b?logo=ko-fi&logoColor=white)](https://ko-fi.com/kevintcoughlin)
+[![Docs](https://img.shields.io/badge/docs-GitHub%20Pages-blue)](https://kevintcoughlin.github.io/gravatar-avatar-sync/)
+
+📖 **Full documentation:** <https://kevintcoughlin.github.io/gravatar-avatar-sync/>
 
 Small Linux utility to sync your local account avatar from Gravatar on a schedule.
 
