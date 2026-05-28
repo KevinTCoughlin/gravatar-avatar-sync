@@ -51,7 +51,13 @@ Identity source priority:
 Optional environment variables:
 
 - `GRAVATAR_DEFAULT` (default: `mp`)
-- `GRAVATAR_SIZE` (default: `512`)
+- `GRAVATAR_SIZE` (default: auto-detected, capped at `2048`)
+
+### Image size behavior
+
+- By default, the script uses lightweight display heuristics (`xrandr` + GNOME scaling settings when available) to request a sharper size.
+- Auto mode is capped to Gravatar's max supported size (`2048`).
+- Set `GRAVATAR_SIZE` explicitly to force a fixed value.
 
 ## Timer schedule
 
