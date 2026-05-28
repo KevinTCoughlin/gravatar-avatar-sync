@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+output_file=""
+url=""
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -o)
+      output_file="$2"
+      shift 2
+      ;;
+    -f|-s|-S|-L|-fsSL)
+      shift
+      ;;
+    *)
+      url="$1"
+      shift
+      ;;
+  esac
+done
+
+if [[ "$url" == *".json" ]]; then
+  printf '%s' "${MOCK_PROFILE_JSON:-{\"entry\":[{\"photos\":[{\"value\":\"https://cdn.example/avatar.png\"}]}]}}"
+  exit 0
+fi
+
+if [[ -n "$output_file" ]]; then
+  printf '%s' "${MOCK_IMAGE_CONTENT:-fake-image-bytes}" >"$output_file"
+fi

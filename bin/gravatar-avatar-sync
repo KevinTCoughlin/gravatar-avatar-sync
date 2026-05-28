@@ -7,6 +7,7 @@ USERNAME_CONFIG_FILE="$CONFIG_DIR/username"
 AVATAR_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/avatars"
 AVATAR_BASENAME="gravatar-avatar"
 DEFAULT_STYLE="${GRAVATAR_DEFAULT:-mp}"
+HOST_DBUS_SOCKET="${HOST_DBUS_SOCKET:-/run/host/run/dbus/system_bus_socket}"
 SOURCE_LABEL=""
 USERNAME="${GRAVATAR_USERNAME:-}"
 EMAIL=""
@@ -141,8 +142,8 @@ if ! gdbus call --system \
   --dest org.freedesktop.Accounts \
   --object-path "$USER_PATH" \
   --method org.freedesktop.Accounts.User.SetIconFile "$FINAL_FILE" >/dev/null; then
-  if [[ -S /run/host/run/dbus/system_bus_socket ]]; then
-    DBUS_SYSTEM_BUS_ADDRESS=unix:path=/run/host/run/dbus/system_bus_socket \
+  if [[ -S "$HOST_DBUS_SOCKET" ]]; then
+    DBUS_SYSTEM_BUS_ADDRESS=unix:path="$HOST_DBUS_SOCKET" \
       gdbus call --system \
       --dest org.freedesktop.Accounts \
       --object-path "$USER_PATH" \

@@ -73,6 +73,14 @@ Optional environment variables:
 - Repeat: every 12 hours
 - Missed runs: caught up on next login (`Persistent=true`)
 
+## Testing
+
+Run the CI-safe integration tests locally with:
+
+```bash
+bash tests/integration/run.sh
+```
+
 ## Uninstall
 
 ```bash

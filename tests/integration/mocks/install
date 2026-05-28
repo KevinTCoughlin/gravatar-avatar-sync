@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [[ "$1" == "-m" ]]; then
+  shift 2
+fi
+
+src="$1"
+dest="$2"
+
+mkdir -p "$(dirname "$dest")"
+cp "$src" "$dest"
