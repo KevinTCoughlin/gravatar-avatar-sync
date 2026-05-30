@@ -2,6 +2,7 @@
 
 [![GitHub Sponsors](https://img.shields.io/github/sponsors/KevinTCoughlin)](https://github.com/sponsors/KevinTCoughlin)
 [![Ko-fi](https://img.shields.io/badge/Ko--fi-support-ff5e5b?logo=ko-fi&logoColor=white)](https://ko-fi.com/kevintcoughlin)
+[![CI](https://github.com/KevinTCoughlin/gravatar-avatar-sync/actions/workflows/ci.yml/badge.svg)](https://github.com/KevinTCoughlin/gravatar-avatar-sync/actions/workflows/ci.yml)
 [![Docs](https://img.shields.io/badge/docs-GitHub%20Pages-blue)](https://kevintcoughlin.github.io/gravatar-avatar-sync/)
 
 📖 **Full documentation:** <https://kevintcoughlin.github.io/gravatar-avatar-sync/>
@@ -107,6 +108,18 @@ bash tests/integration/run.sh
 ```bash
 ./uninstall.sh
 ```
+
+## CI
+
+Every push and pull request runs the following checks via [GitHub Actions](.github/workflows/ci.yml):
+
+| Stage | What it does |
+|---|---|
+| **ShellCheck** | Lints all shell scripts (including `lib/` modules) with [ShellCheck](https://www.shellcheck.net/) |
+| **Unit Tests** | Runs `tests/unit.sh` — tests pure functions (avatar-size detection, email normalisation, hash generation, URL construction) |
+| **Integration Tests** | Runs `tests/integration.sh` — exercises the full script with mocked network and D-Bus calls (CI-safe, no real internet or display required) |
+
+All three stages must pass before a PR can be merged.
 
 ## Architecture
 

@@ -65,9 +65,11 @@ gravatar_resolve_url() {
     local hash
     hash="$(printf '%s' "$email" | md5sum | awk '{print $1}')"
     url="https://www.gravatar.com/avatar/${hash}?s=${size}&d=${default_style}"
+    # shellcheck disable=SC2034
     SOURCE_LABEL="$email"
   fi
 
+  # shellcheck disable=SC2034
   PROVIDER_URL="$url"
 }
 
