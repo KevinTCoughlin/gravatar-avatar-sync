@@ -203,7 +203,15 @@ assert_contains "unsupported MIME type: exits with error" "Unsupported image typ
 # ---------------------------------------------------------------------------
 
 if command -v shellcheck >/dev/null 2>&1; then
-  if shellcheck "$MAIN_SCRIPT" "$REPO_ROOT/install.sh" "$REPO_ROOT/uninstall.sh" 2>&1; then
+  if shellcheck -x --source-path=SCRIPTDIR \
+      "$MAIN_SCRIPT" \
+      "$REPO_ROOT/install.sh" \
+      "$REPO_ROOT/uninstall.sh" \
+      "$REPO_ROOT/lib/gravatar-avatar-sync/display.sh" \
+      "$REPO_ROOT/lib/gravatar-avatar-sync/identity.sh" \
+      "$REPO_ROOT/lib/gravatar-avatar-sync/fetch.sh" \
+      "$REPO_ROOT/lib/gravatar-avatar-sync/update.sh" \
+      "$REPO_ROOT/lib/gravatar-avatar-sync/providers/gravatar.sh" 2>&1; then
     pass_test "shellcheck passes on all shell scripts"
   else
     fail_test "shellcheck passes on all shell scripts"

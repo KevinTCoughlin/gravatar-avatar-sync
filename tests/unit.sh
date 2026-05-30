@@ -3,7 +3,7 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-MAIN_SCRIPT="$REPO_ROOT/bin/gravatar-avatar-sync"
+DISPLAY_LIB="$REPO_ROOT/lib/gravatar-avatar-sync/display.sh"
 
 pass=0
 fail=0
@@ -36,23 +36,10 @@ assert_in_range() {
 # Source detect_avatar_size in a subshell to avoid polluting our environment
 # ---------------------------------------------------------------------------
 
-# Extract the detect_avatar_size function definition from the main script
-detect_avatar_size_def="$(awk '
-  /^detect_avatar_size\(\)/ { capture=1; depth=0 }
-  capture {
-    print
-    for (i=1; i<=length($0); i++) {
-      c = substr($0, i, 1)
-      if (c == "{") depth++
-      if (c == "}") depth--
-    }
-    if (capture && depth==0 && NR>1) { capture=0 }
-  }
-' "$MAIN_SCRIPT")"
-
 run_detect_avatar_size() {
   bash -c "
-    $detect_avatar_size_def
+    # shellcheck source=../lib/gravatar-avatar-sync/display.sh
+    source '$DISPLAY_LIB'
     detect_avatar_size
   "
 }
@@ -68,7 +55,7 @@ fi
 
 # detect_avatar_size respects GRAVATAR_SIZE env var (capped to [512,2048])
 size_env="$(GRAVATAR_SIZE=800 bash -c "
-  $detect_avatar_size_def
+  source '$DISPLAY_LIB'
   SIZE=\"\${GRAVATAR_SIZE:-\$(detect_avatar_size)}\"
   printf '%s' \"\$SIZE\"
 ")"
