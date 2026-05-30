@@ -74,6 +74,25 @@ Optional environment variables:
 - Repeat: every 12 hours
 - Missed runs: caught up on next login (`Persistent=true`)
 
+## Testing
+
+Unit tests cover identity-source precedence and URL resolution. They use [bats-core](https://github.com/bats-core/bats-core) and mock all network/system calls.
+
+Install bats-core (Fedora/Debian):
+
+```bash
+# Fedora
+sudo dnf install bats
+# Debian / Ubuntu
+sudo apt-get install bats
+```
+
+Run the test suite:
+
+```bash
+bats tests/
+```
+
 ## Uninstall
 
 ```bash

@@ -39,10 +39,11 @@ gravatar_resolve_url() {
     profile_url="https://gravatar.com/${username}.json"
     profile_json="$(curl -fsSL "$profile_url")"
 
-    # Prefer the explicit photo value; fall back to thumbnailUrl
-    url="$(printf '%s' "$profile_json" | grep -o '"value":"[^"]*"' | head -n 1 | cut -d '"' -f 4 | sed 's#\\/#/#g')"
+    # Prefer the explicit photo value; fall back to thumbnailUrl.
+    # || true prevents pipefail from aborting when grep finds no match.
+    url="$(printf '%s' "$profile_json" | grep -o '"value":"[^"]*"' | head -n 1 | cut -d '"' -f 4 | sed 's#\\/#/#g')" || true
     if [[ -z "$url" ]]; then
-      url="$(printf '%s' "$profile_json" | grep -o '"thumbnailUrl":"[^"]*"' | head -n 1 | cut -d '"' -f 4 | sed 's#\\/#/#g')"
+      url="$(printf '%s' "$profile_json" | grep -o '"thumbnailUrl":"[^"]*"' | head -n 1 | cut -d '"' -f 4 | sed 's#\\/#/#g')" || true
     fi
 
     if [[ -z "$url" ]]; then
