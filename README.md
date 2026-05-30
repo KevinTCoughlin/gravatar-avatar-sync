@@ -96,6 +96,12 @@ Run the test suite:
 bats tests/
 ```
 
+Run the CI-safe integration side-effect tests with:
+
+```bash
+bash tests/integration/run.sh
+```
+
 ## Uninstall
 
 ```bash

@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+output_file=""
+url=""
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -o)
+      [[ $# -ge 2 ]] || { echo "curl mock: -o requires a value" >&2; exit 2; }
+      output_file="$2"
+      shift 2
+      ;;
+    --header|-H|--max-time|--connect-timeout|--request|-X|--user|-u|--data|-d)
+      [[ $# -ge 2 ]] || { echo "curl mock: $1 requires a value" >&2; exit 2; }
+      shift 2
+      ;;
+    --*=*)
+      shift
+      ;;
+    -*)
+      shift
+      ;;
+    *)
+      if [[ "$1" =~ ^https?:// ]]; then
+        url="$1"
+      fi
+      shift
+      ;;
+  esac
+done
+
+if [[ "$url" == *".json" ]]; then
+  printf '%s' "${MOCK_PROFILE_JSON:-{\"entry\":[{\"photos\":[{\"value\":\"https://cdn.example/avatar.png\"}]}]}}"
+  exit 0
+fi
+
+if [[ -n "$output_file" ]]; then
+  printf '%s' "${MOCK_IMAGE_CONTENT:-fake-image-bytes}" >"$output_file"
+fi

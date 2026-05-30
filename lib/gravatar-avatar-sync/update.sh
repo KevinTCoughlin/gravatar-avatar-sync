@@ -20,14 +20,15 @@ write_local_files() {
 
 update_accounts_service() {
   local final_file="$1"
-  local user_path
+  local user_path host_dbus_socket
   user_path="/org/freedesktop/Accounts/User$(id -u)"
+  host_dbus_socket="${HOST_DBUS_SOCKET:-/run/host/run/dbus/system_bus_socket}"
   if ! gdbus call --system \
     --dest org.freedesktop.Accounts \
     --object-path "$user_path" \
     --method org.freedesktop.Accounts.User.SetIconFile "$final_file" >/dev/null; then
-    if [[ -S /run/host/run/dbus/system_bus_socket ]]; then
-      DBUS_SYSTEM_BUS_ADDRESS=unix:path=/run/host/run/dbus/system_bus_socket \
+    if [[ -S "$host_dbus_socket" ]]; then
+      DBUS_SYSTEM_BUS_ADDRESS=unix:path="$host_dbus_socket" \
         gdbus call --system \
         --dest org.freedesktop.Accounts \
         --object-path "$user_path" \
