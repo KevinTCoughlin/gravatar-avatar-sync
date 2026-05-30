@@ -2,6 +2,9 @@
 
 [![GitHub Sponsors](https://img.shields.io/github/sponsors/KevinTCoughlin)](https://github.com/sponsors/KevinTCoughlin)
 [![Ko-fi](https://img.shields.io/badge/Ko--fi-support-ff5e5b?logo=ko-fi&logoColor=white)](https://ko-fi.com/kevintcoughlin)
+[![Docs](https://img.shields.io/badge/docs-GitHub%20Pages-blue)](https://kevintcoughlin.github.io/gravatar-avatar-sync/)
+
+📖 **Full documentation:** <https://kevintcoughlin.github.io/gravatar-avatar-sync/>
 
 Small Linux utility to sync your local account avatar from Gravatar on a schedule.
 
@@ -60,6 +63,7 @@ Optional environment variables:
 
 - `GRAVATAR_DEFAULT` (default: `mp`)
 - `GRAVATAR_SIZE` (default: auto-detected, capped at `2048`)
+- `GRAVATAR_PROVIDER` (default: `gravatar`) — name of the active provider (see below)
 
 ### Image size behavior
 
@@ -75,7 +79,24 @@ Optional environment variables:
 
 ## Testing
 
-Run the CI-safe integration tests locally with:
+Unit tests cover identity-source precedence and URL resolution. They use [bats-core](https://github.com/bats-core/bats-core) and mock all network/system calls.
+
+Install bats-core (Fedora/Debian):
+
+```bash
+# Fedora
+sudo dnf install bats
+# Debian / Ubuntu
+sudo apt-get install bats
+```
+
+Run the test suite:
+
+```bash
+bats tests/
+```
+
+Run the CI-safe integration side-effect tests with:
 
 ```bash
 bash tests/integration/run.sh
@@ -85,6 +106,77 @@ bash tests/integration/run.sh
 
 ```bash
 ./uninstall.sh
+```
+
+## Architecture
+
+The script is organised into focused library modules installed under
+`~/.local/lib/gravatar-avatar-sync/`:
+
+| Module | Responsibility |
+|---|---|
+| `display.sh` | Auto-detect avatar pixel size from display/DPI settings |
+| `identity.sh` | Resolve username/email from environment, config files, or git |
+| `fetch.sh` | Download avatar image; validate MIME type |
+| `update.sh` | Write `~/.face`, `~/.face.icon`, and `AVATAR_DIR`; call AccountsService |
+| `providers/gravatar.sh` | Gravatar-specific URL resolution (username JSON or email hash) |
+
+`bin/gravatar-avatar-sync` is a thin orchestrator that sources these modules
+and calls them in order.
+
+## Adding a new provider
+
+A *provider* is a single Bash script placed in
+`lib/gravatar-avatar-sync/providers/` that implements one function:
+
+```bash
+<provider_name>_resolve_url <username> <email> <size> <default_style>
+```
+
+### Contract
+
+| Requirement | Detail |
+|---|---|
+| Set URL | Assign the resolved image URL to the global **`PROVIDER_URL`** |
+| Source label | Set the global `SOURCE_LABEL` to a human-readable identity string |
+| Success | Return exit code `0` |
+| Failure | Print a human-readable message to **stderr**; return non-zero |
+
+### Example: libravatar provider
+
+```bash
+# lib/gravatar-avatar-sync/providers/libravatar.sh
+
+libravatar_resolve_url() {
+  local username="$1"
+  local email="$2"
+  local size="$3"
+  local default_style="$4"
+
+  if [[ -z "$email" ]]; then
+    echo "libravatar provider requires an email address" >&2
+    return 1
+  fi
+
+  local hash
+  hash="$(printf '%s' "$email" | md5sum | awk '{print $1}')"
+  SOURCE_LABEL="$email"
+  PROVIDER_URL="https://seccdn.libravatar.org/avatar/${hash}?s=${size}&d=${default_style}"
+}
+```
+
+Then activate it:
+
+```bash
+export GRAVATAR_PROVIDER=libravatar
+gravatar-avatar-sync
+```
+
+Or add it to the systemd service override:
+
+```ini
+[Service]
+Environment=GRAVATAR_PROVIDER=libravatar
 ```
 
 ## Support

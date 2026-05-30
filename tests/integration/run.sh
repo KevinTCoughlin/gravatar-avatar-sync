@@ -132,7 +132,7 @@ test_failure_unsupported_mime() {
     return 1
   fi
 
-  assert_contains "Unsupported image type from Gravatar: text/plain" "$STDOUT_FILE"
+  assert_contains "Unsupported image type: text/plain" "$STDERR_FILE"
 }
 
 test_failure_unreachable_dbus() {
@@ -145,7 +145,7 @@ test_failure_unreachable_dbus() {
     return 1
   fi
 
-  assert_contains "Unable to reach system D-Bus to set AccountsService icon." "$STDOUT_FILE"
+  assert_contains "Unable to reach system D-Bus to set AccountsService icon." "$STDERR_FILE"
 }
 
 run_test() {
