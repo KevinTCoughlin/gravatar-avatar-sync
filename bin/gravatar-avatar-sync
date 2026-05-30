@@ -1,156 +1,82 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# ---------------------------------------------------------------------------
+# Locate the library directory relative to this script so that both the
+# in-repo and installed layouts work transparently:
+#   In-repo:   bin/gravatar-avatar-sync  →  ../lib/gravatar-avatar-sync/
+#   Installed: ~/.local/bin/…            →  ~/.local/lib/gravatar-avatar-sync/
+# ---------------------------------------------------------------------------
+LIB_DIR="$(dirname "$(realpath "${BASH_SOURCE[0]}")")/../lib/gravatar-avatar-sync"
+if [[ ! -d "$LIB_DIR" ]]; then
+  echo "Error: library directory not found: $LIB_DIR" >&2
+  exit 1
+fi
+
+# shellcheck source=../lib/gravatar-avatar-sync/display.sh
+source "$LIB_DIR/display.sh"
+# shellcheck source=../lib/gravatar-avatar-sync/identity.sh
+source "$LIB_DIR/identity.sh"
+# shellcheck source=../lib/gravatar-avatar-sync/fetch.sh
+source "$LIB_DIR/fetch.sh"
+# shellcheck source=../lib/gravatar-avatar-sync/update.sh
+source "$LIB_DIR/update.sh"
+
+# ---------------------------------------------------------------------------
+# Configuration
+# ---------------------------------------------------------------------------
 CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/gravatar-avatar-sync"
 EMAIL_CONFIG_FILE="$CONFIG_DIR/email"
 USERNAME_CONFIG_FILE="$CONFIG_DIR/username"
 AVATAR_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/avatars"
 AVATAR_BASENAME="gravatar-avatar"
 DEFAULT_STYLE="${GRAVATAR_DEFAULT:-mp}"
-SOURCE_LABEL=""
-USERNAME="${GRAVATAR_USERNAME:-}"
-EMAIL=""
-
-detect_avatar_size() {
-  local max_dim scale_factor text_scale base_size detected_size
-  max_dim=""
-  scale_factor="1"
-  text_scale="1"
-
-  if command -v xrandr >/dev/null 2>&1 && [[ -n "${DISPLAY:-}" ]]; then
-    max_dim="$(xrandr --current 2>/dev/null | awk '
-      / connected/ {
-        for (i = 1; i <= NF; i++) {
-          if ($i ~ /^[0-9]+x[0-9]+\+/) {
-            split($i, a, /x|\+/)
-            w = a[1] + 0
-            h = a[2] + 0
-            if (w > m) m = w
-            if (h > m) m = h
-          }
-        }
-      }
-      END { if (m > 0) print m }
-    ')"
-  fi
-
-  if command -v gsettings >/dev/null 2>&1; then
-    scale_factor="$(gsettings get org.gnome.desktop.interface scaling-factor 2>/dev/null | awk '{print $NF}' || true)"
-    text_scale="$(gsettings get org.gnome.desktop.interface text-scaling-factor 2>/dev/null | awk '{print $NF}' || true)"
-    [[ "$scale_factor" =~ ^[0-9]+$ ]] || scale_factor="1"
-    (( scale_factor < 1 )) && scale_factor="1"
-    [[ "$text_scale" =~ ^[0-9]+([.][0-9]+)?$ ]] || text_scale="1"
-    [[ -z "$scale_factor" ]] && scale_factor="1"
-    [[ -z "$text_scale" ]] && text_scale="1"
-  fi
-
-  if [[ -n "$max_dim" ]]; then
-    if (( max_dim >= 3840 )); then
-      base_size=1536
-    elif (( max_dim >= 2560 )); then
-      base_size=1280
-    elif (( max_dim >= 1920 )); then
-      base_size=1024
-    else
-      base_size=768
-    fi
-  else
-    base_size=1024
-  fi
-
-  detected_size="$(awk -v b="$base_size" -v s="$scale_factor" -v t="$text_scale" 'BEGIN {
-    v = int((b * s * t) + 0.5)
-    if (v < 512) v = 512
-    if (v > 2048) v = 2048
-    print v
-  }')"
-  printf '%s' "$detected_size"
-}
-
 SIZE="${GRAVATAR_SIZE:-$(detect_avatar_size)}"
 
-if [[ $# -gt 0 ]]; then
-  EMAIL="$1"
-elif [[ -n "${GRAVATAR_EMAIL:-}" ]]; then
-  EMAIL="$GRAVATAR_EMAIL"
-elif [[ -f "$EMAIL_CONFIG_FILE" ]]; then
-  EMAIL="$(<"$EMAIL_CONFIG_FILE")"
-else
-  EMAIL="$(git config --global --get user.email || true)"
+# ---------------------------------------------------------------------------
+# Load provider (default: gravatar)
+# Set GRAVATAR_PROVIDER to the name of a script in lib/providers/ to switch.
+# ---------------------------------------------------------------------------
+PROVIDER="${GRAVATAR_PROVIDER:-gravatar}"
+PROVIDER_SCRIPT="$LIB_DIR/providers/${PROVIDER}.sh"
+if [[ ! -f "$PROVIDER_SCRIPT" ]]; then
+  echo "Error: provider not found: $PROVIDER (expected $PROVIDER_SCRIPT)" >&2
+  exit 1
 fi
+# shellcheck disable=SC1090
+source "$PROVIDER_SCRIPT"
 
-if [[ -z "$USERNAME" && -f "$USERNAME_CONFIG_FILE" ]]; then
-  USERNAME="$(<"$USERNAME_CONFIG_FILE")"
-fi
-USERNAME="$(printf '%s' "$USERNAME" | xargs)"
+# ---------------------------------------------------------------------------
+# Resolve identity
+# ---------------------------------------------------------------------------
+USERNAME="${GRAVATAR_USERNAME:-}"
+EMAIL=""
+SOURCE_LABEL=""
+resolve_identity "${1:-}"
 
-if [[ -n "$USERNAME" ]]; then
-  PROFILE_URL="https://gravatar.com/${USERNAME}.json"
-  PROFILE_JSON="$(curl -fsSL "$PROFILE_URL")"
-  URL="$(printf '%s' "$PROFILE_JSON" | grep -o '"value":"[^"]*"' | head -n 1 | cut -d '"' -f 4 | sed 's#\\/#/#g')"
-  if [[ -z "$URL" ]]; then
-    URL="$(printf '%s' "$PROFILE_JSON" | grep -o '"thumbnailUrl":"[^"]*"' | head -n 1 | cut -d '"' -f 4 | sed 's#\\/#/#g')"
-  fi
-  if [[ -z "$URL" ]]; then
-    echo "Could not find photo URL in Gravatar profile for username: $USERNAME"
-    exit 1
-  fi
-  if [[ "$URL" == *\?* ]]; then
-    URL="${URL}&s=${SIZE}&d=${DEFAULT_STYLE}"
-  else
-    URL="${URL}?s=${SIZE}&d=${DEFAULT_STYLE}"
-  fi
-  SOURCE_LABEL="$USERNAME"
-else
-  EMAIL="$(printf '%s' "$EMAIL" | tr '[:upper:]' '[:lower:]' | xargs)"
-  if [[ -z "$EMAIL" ]]; then
-    echo "No identity found. Set GRAVATAR_USERNAME, GRAVATAR_EMAIL, or config files in $CONFIG_DIR."
-    exit 1
-  fi
-  HASH="$(printf '%s' "$EMAIL" | md5sum | awk '{print $1}')"
-  URL="https://www.gravatar.com/avatar/${HASH}?s=${SIZE}&d=${DEFAULT_STYLE}"
-  SOURCE_LABEL="$EMAIL"
-fi
+# ---------------------------------------------------------------------------
+# Resolve avatar URL via the active provider
+# Sets globals: PROVIDER_URL  SOURCE_LABEL
+# ---------------------------------------------------------------------------
+PROVIDER_URL=""
+"${PROVIDER}_resolve_url" "$USERNAME" "$EMAIL" "$SIZE" "$DEFAULT_STYLE"
+URL="$PROVIDER_URL"
 
+# ---------------------------------------------------------------------------
+# Fetch and validate
+# ---------------------------------------------------------------------------
 mkdir -p "$AVATAR_DIR"
 TMP_FILE="$(mktemp)"
 trap 'rm -f "$TMP_FILE"' EXIT
 
-curl -fsSL "$URL" -o "$TMP_FILE"
+fetch_avatar "$URL" "$TMP_FILE"
+EXT="$(validate_mime "$TMP_FILE")"
 
-MIME_TYPE="$(file --mime-type -b "$TMP_FILE")"
-case "$MIME_TYPE" in
-  image/png) EXT="png" ;;
-  image/jpeg) EXT="jpg" ;;
-  image/gif) EXT="gif" ;;
-  image/webp) EXT="webp" ;;
-  *)
-    echo "Unsupported image type from Gravatar: $MIME_TYPE"
-    exit 1
-    ;;
-esac
-
+# ---------------------------------------------------------------------------
+# Write local files and update AccountsService
+# ---------------------------------------------------------------------------
 FINAL_FILE="${AVATAR_DIR}/${AVATAR_BASENAME}.${EXT}"
-install -m 0644 "$TMP_FILE" "$FINAL_FILE"
-
-install -m 0644 "$FINAL_FILE" "$HOME/.face"
-install -m 0644 "$FINAL_FILE" "$HOME/.face.icon"
-
-USER_PATH="/org/freedesktop/Accounts/User$(id -u)"
-if ! gdbus call --system \
-  --dest org.freedesktop.Accounts \
-  --object-path "$USER_PATH" \
-  --method org.freedesktop.Accounts.User.SetIconFile "$FINAL_FILE" >/dev/null; then
-  if [[ -S /run/host/run/dbus/system_bus_socket ]]; then
-    DBUS_SYSTEM_BUS_ADDRESS=unix:path=/run/host/run/dbus/system_bus_socket \
-      gdbus call --system \
-      --dest org.freedesktop.Accounts \
-      --object-path "$USER_PATH" \
-      --method org.freedesktop.Accounts.User.SetIconFile "$FINAL_FILE" >/dev/null
-  else
-    echo "Unable to reach system D-Bus to set AccountsService icon."
-    exit 1
-  fi
-fi
+write_local_files "$TMP_FILE" "$FINAL_FILE"
+update_accounts_service "$FINAL_FILE"
 
 echo "Updated avatar from Gravatar for $SOURCE_LABEL (size=${SIZE})"
