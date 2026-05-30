@@ -9,4 +9,6 @@ rm -f \
   "$HOME/.config/systemd/user/gravatar-avatar-sync.service" \
   "$HOME/.config/systemd/user/gravatar-avatar-sync.timer"
 
+rm -rf "$HOME/.local/lib/gravatar-avatar-sync"
+
 echo "Uninstalled gravatar-avatar-sync files."

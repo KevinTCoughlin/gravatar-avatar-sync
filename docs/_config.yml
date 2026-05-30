@@ -1,0 +1,15 @@
+title: gravatar-avatar-sync
+description: Small Linux utility to sync your local account avatar from Gravatar on a schedule.
+theme: minima
+url: "https://kevintcoughlin.github.io"
+baseurl: "/gravatar-avatar-sync"
+
+header_pages:
+  - index.md
+  - install.md
+  - configuration.md
+  - troubleshooting.md
+
+minima:
+  social_links:
+    - { platform: github, user_url: "https://github.com/KevinTCoughlin/gravatar-avatar-sync" }
