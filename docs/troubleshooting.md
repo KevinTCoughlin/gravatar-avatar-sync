@@ -63,6 +63,20 @@ If the problem persists, confirm `gdbus` is installed and the D-Bus session is a
 gdbus call --session --dest org.freedesktop.Accounts --object-path /org/freedesktop/Accounts --method org.freedesktop.Accounts.FindUserByName "$USER"
 ```
 
+For other login managers (SDDM, LightDM), log out and back in after a sync to pick up the updated `~/.face` file.
+
+---
+
+## Unable to reach system D-Bus
+
+If you see `Unable to reach system D-Bus to set AccountsService icon`, check that `accounts-daemon` is running:
+
+```bash
+systemctl status accounts-daemon
+```
+
+On containerised desktops (Toolbox/distrobox), the system D-Bus socket may not be at the default path. The script automatically falls back to `/run/host/run/dbus/system_bus_socket`; ensure that path is accessible from inside the container.
+
 ---
 
 ## curl errors / network issues
@@ -72,6 +86,55 @@ The script fetches the avatar from `https://www.gravatar.com`. Ensure you have i
 ```bash
 curl --version
 curl -I "https://www.gravatar.com"
+```
+
+A `curl: (22) … 404 Not Found` error when using username-based config means the Gravatar profile could not be found or is private. Verify the username is correct at `https://gravatar.com/<username>`, or switch to email-based config.
+
+---
+
+## Unsupported image type
+
+If the script exits with `Unsupported image type from Gravatar`, Gravatar returned an unexpected response (HTML or a redirect page) instead of an image. Set `GRAVATAR_DEFAULT=404` to get an explicit HTTP error that makes the root cause clearer:
+
+```bash
+GRAVATAR_DEFAULT=404 gravatar-avatar-sync
+```
+
+Then confirm your identity config is correct (see [Configuration]({{ site.baseurl }}/configuration/)).
+
+---
+
+## Permission denied writing ~/.face
+
+If the script cannot write `~/.face` or `~/.face.icon`, the files may be owned by root or have restrictive permissions:
+
+```bash
+chmod 644 ~/.face ~/.face.icon
+chown "$USER" ~/.face ~/.face.icon
+```
+
+---
+
+## `systemctl --user` commands fail
+
+If `systemctl --user` commands return an error like `Failed to connect to bus: No such file or directory`, the systemd user instance may not be running. Enable lingering for your account:
+
+```bash
+loginctl enable-linger "$USER"
+```
+
+---
+
+## `file: command not found`
+
+The `file` utility is required to detect the MIME type of the downloaded image. Install it:
+
+```bash
+# Fedora / RHEL
+sudo dnf install file
+
+# Debian / Ubuntu
+sudo apt install file
 ```
 
 ---
