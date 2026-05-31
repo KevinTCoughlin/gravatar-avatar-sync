@@ -298,6 +298,18 @@ Or add it to the systemd service override:
 Environment=GRAVATAR_PROVIDER=libravatar
 ```
 
+## Releases & Versioning
+
+This project follows [Semantic Versioning](https://semver.org/).
+See [docs/RELEASING.md](docs/RELEASING.md) for the full release checklist and
+[CHANGELOG.md](CHANGELOG.md) for a history of changes.
+
+## Packaging
+
+Packages for Fedora/RHEL (COPR), Arch (AUR), Homebrew, and Debian/Ubuntu are
+planned.  See [docs/PACKAGING.md](docs/PACKAGING.md) for the prioritized
+roadmap.
+
 ## Support
 
 If this project helps you, consider supporting via [GitHub Sponsors](https://github.com/sponsors/KevinTCoughlin) or [Ko-fi](https://ko-fi.com/kevintcoughlin).
