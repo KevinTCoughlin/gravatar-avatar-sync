@@ -21,6 +21,7 @@ It updates:
 - `curl`
 - `gdbus`
 - `file`
+- `jq`
 - `systemd --user`
 
 ## Quick Start
@@ -87,6 +88,10 @@ printf '%s\n' 'your-email@example.com' > ~/.config/gravatar-avatar-sync/email
 | `GRAVATAR_DEFAULT` | `mp` | Fallback image style when no avatar exists (see [Gravatar docs](https://docs.gravatar.com/api/avatars/images/)) |
 | `GRAVATAR_SIZE` | auto-detected | Force a fixed pixel size (max `2048`) |
 | `GRAVATAR_PROVIDER` | `gravatar` | Name of the active provider (see [Adding a new provider](#adding-a-new-provider)) |
+| `GRAVATAR_CURL_CONNECT_TIMEOUT` | `10` | Curl connect timeout (seconds) |
+| `GRAVATAR_CURL_MAX_TIME` | `45` | Curl total request timeout (seconds) |
+| `GRAVATAR_CURL_RETRY` | `3` | Curl retry attempts |
+| `GRAVATAR_CURL_RETRY_DELAY` | `2` | Delay between curl retries (seconds) |
 
 ### Image size behavior
 
@@ -97,6 +102,12 @@ printf '%s\n' 'your-email@example.com' > ~/.config/gravatar-avatar-sync/email
   ```bash
   GRAVATAR_SIZE=512 gravatar-avatar-sync
   ```
+
+### Runtime behavior
+
+- Username profile parsing uses `jq` for robust JSON handling.
+- Download requests use retry/timeout controls to avoid hanging indefinitely.
+- If the downloaded avatar is unchanged, the script skips unnecessary rewrites and D-Bus updates.
 
 ## Timer / Service Lifecycle
 

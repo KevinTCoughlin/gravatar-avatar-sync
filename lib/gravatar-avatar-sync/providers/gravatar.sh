@@ -26,7 +26,6 @@
 #   1. Create lib/gravatar-avatar-sync/providers/libravatar.sh
 #   2. Implement libravatar_resolve_url() following the contract above.
 #   3. Set GRAVATAR_PROVIDER=libravatar in the environment or a config file.
-
 gravatar_resolve_url() {
   local username="$1"
   local email="$2"
@@ -72,4 +71,3 @@ gravatar_resolve_url() {
   # shellcheck disable=SC2034
   PROVIDER_URL="$url"
 }
-
