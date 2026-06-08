@@ -17,6 +17,7 @@ It updates:
 - `curl`
 - `gdbus`
 - `file`
+- `jq`
 - `systemd --user`
 
 ## Install
@@ -60,12 +61,22 @@ Optional environment variables:
 
 - `GRAVATAR_DEFAULT` (default: `mp`)
 - `GRAVATAR_SIZE` (default: auto-detected, capped at `2048`)
+- `GRAVATAR_CURL_CONNECT_TIMEOUT` (default: `10` seconds)
+- `GRAVATAR_CURL_MAX_TIME` (default: `45` seconds)
+- `GRAVATAR_CURL_RETRY` (default: `3`)
+- `GRAVATAR_CURL_RETRY_DELAY` (default: `2` seconds)
 
 ### Image size behavior
 
 - By default, the script uses lightweight display heuristics (`xrandr` + GNOME scaling settings when available) to request a sharper size.
 - Auto mode is capped to Gravatar's max supported size (`2048`).
 - Set `GRAVATAR_SIZE` explicitly to force a fixed value.
+
+### Runtime behavior
+
+- Username profile parsing uses `jq` for robust JSON handling.
+- Download requests use retry/timeout controls to avoid hanging indefinitely.
+- If the downloaded avatar is unchanged, the script skips unnecessary rewrites and D-Bus updates.
 
 ## Timer schedule
 

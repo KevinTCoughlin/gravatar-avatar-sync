@@ -7,9 +7,86 @@ USERNAME_CONFIG_FILE="$CONFIG_DIR/username"
 AVATAR_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/avatars"
 AVATAR_BASENAME="gravatar-avatar"
 DEFAULT_STYLE="${GRAVATAR_DEFAULT:-mp}"
+CURL_CONNECT_TIMEOUT="${GRAVATAR_CURL_CONNECT_TIMEOUT:-10}"
+CURL_MAX_TIME="${GRAVATAR_CURL_MAX_TIME:-45}"
+CURL_RETRY="${GRAVATAR_CURL_RETRY:-3}"
+CURL_RETRY_DELAY="${GRAVATAR_CURL_RETRY_DELAY:-2}"
 SOURCE_LABEL=""
 USERNAME="${GRAVATAR_USERNAME:-}"
 EMAIL=""
+
+require_tools() {
+  local required_tools tool
+  required_tools=(curl file gdbus md5sum jq)
+  for tool in "${required_tools[@]}"; do
+    if ! command -v "$tool" >/dev/null 2>&1; then
+      echo "Missing required tool: $tool"
+      exit 1
+    fi
+  done
+}
+
+trim() {
+  local value="$1"
+  value="${value#"${value%%[![:space:]]*}"}"
+  value="${value%"${value##*[![:space:]]}"}"
+  printf '%s' "$value"
+}
+
+validate_positive_int() {
+  local value="$1"
+  [[ "$value" =~ ^[0-9]+$ ]] && (( value > 0 ))
+}
+
+curl_get() {
+  curl \
+    --fail \
+    --silent \
+    --show-error \
+    --location \
+    --connect-timeout "$CURL_CONNECT_TIMEOUT" \
+    --max-time "$CURL_MAX_TIME" \
+    --retry "$CURL_RETRY" \
+    --retry-delay "$CURL_RETRY_DELAY" \
+    --retry-all-errors \
+    "$@"
+}
+
+update_file_if_changed() {
+  local source="$1"
+  local dest="$2"
+
+  if [[ -f "$dest" ]] && cmp -s "$source" "$dest"; then
+    return 1
+  fi
+
+  install -m 0644 "$source" "$dest"
+  return 0
+}
+
+set_accountsservice_icon() {
+  local user_path icon_file
+  user_path="$1"
+  icon_file="$2"
+
+  if gdbus call --system \
+    --dest org.freedesktop.Accounts \
+    --object-path "$user_path" \
+    --method org.freedesktop.Accounts.User.SetIconFile "$icon_file" >/dev/null; then
+    return 0
+  fi
+
+  if [[ -S /run/host/run/dbus/system_bus_socket ]]; then
+    DBUS_SYSTEM_BUS_ADDRESS=unix:path=/run/host/run/dbus/system_bus_socket \
+      gdbus call --system \
+      --dest org.freedesktop.Accounts \
+      --object-path "$user_path" \
+      --method org.freedesktop.Accounts.User.SetIconFile "$icon_file" >/dev/null
+    return 0
+  fi
+
+  return 1
+}
 
 detect_avatar_size() {
   local max_dim scale_factor text_scale base_size detected_size
@@ -67,7 +144,17 @@ detect_avatar_size() {
   printf '%s' "$detected_size"
 }
 
-SIZE="${GRAVATAR_SIZE:-$(detect_avatar_size)}"
+require_tools
+
+if [[ -n "${GRAVATAR_SIZE:-}" ]]; then
+  SIZE="$(trim "$GRAVATAR_SIZE")"
+  if ! validate_positive_int "$SIZE" || (( SIZE > 2048 )); then
+    echo "Invalid GRAVATAR_SIZE: $SIZE (expected integer in range 1-2048)."
+    exit 1
+  fi
+else
+  SIZE="$(detect_avatar_size)"
+fi
 
 if [[ $# -gt 0 ]]; then
   EMAIL="$1"
@@ -82,15 +169,12 @@ fi
 if [[ -z "$USERNAME" && -f "$USERNAME_CONFIG_FILE" ]]; then
   USERNAME="$(<"$USERNAME_CONFIG_FILE")"
 fi
-USERNAME="$(printf '%s' "$USERNAME" | xargs)"
+USERNAME="$(trim "$USERNAME")"
 
 if [[ -n "$USERNAME" ]]; then
   PROFILE_URL="https://gravatar.com/${USERNAME}.json"
-  PROFILE_JSON="$(curl -fsSL "$PROFILE_URL")"
-  URL="$(printf '%s' "$PROFILE_JSON" | grep -o '"value":"[^"]*"' | head -n 1 | cut -d '"' -f 4 | sed 's#\\/#/#g')"
-  if [[ -z "$URL" ]]; then
-    URL="$(printf '%s' "$PROFILE_JSON" | grep -o '"thumbnailUrl":"[^"]*"' | head -n 1 | cut -d '"' -f 4 | sed 's#\\/#/#g')"
-  fi
+  PROFILE_JSON="$(curl_get "$PROFILE_URL")"
+  URL="$(printf '%s' "$PROFILE_JSON" | jq -r 'first(([.entry[0].photos[]?.value, .entry[0].thumbnailUrl] | map(select(type == "string" and length > 0)))[]) // empty')"
   if [[ -z "$URL" ]]; then
     echo "Could not find photo URL in Gravatar profile for username: $USERNAME"
     exit 1
@@ -102,7 +186,8 @@ if [[ -n "$USERNAME" ]]; then
   fi
   SOURCE_LABEL="$USERNAME"
 else
-  EMAIL="$(printf '%s' "$EMAIL" | tr '[:upper:]' '[:lower:]' | xargs)"
+  EMAIL="$(trim "$EMAIL")"
+  EMAIL="$(printf '%s' "$EMAIL" | tr '[:upper:]' '[:lower:]')"
   if [[ -z "$EMAIL" ]]; then
     echo "No identity found. Set GRAVATAR_USERNAME, GRAVATAR_EMAIL, or config files in $CONFIG_DIR."
     exit 1
@@ -113,10 +198,10 @@ else
 fi
 
 mkdir -p "$AVATAR_DIR"
-TMP_FILE="$(mktemp)"
+TMP_FILE="$(mktemp "${AVATAR_DIR}/.${AVATAR_BASENAME}.XXXXXX")"
 trap 'rm -f "$TMP_FILE"' EXIT
 
-curl -fsSL "$URL" -o "$TMP_FILE"
+curl_get "$URL" -o "$TMP_FILE"
 
 MIME_TYPE="$(file --mime-type -b "$TMP_FILE")"
 case "$MIME_TYPE" in
@@ -131,26 +216,29 @@ case "$MIME_TYPE" in
 esac
 
 FINAL_FILE="${AVATAR_DIR}/${AVATAR_BASENAME}.${EXT}"
-install -m 0644 "$TMP_FILE" "$FINAL_FILE"
 
-install -m 0644 "$FINAL_FILE" "$HOME/.face"
-install -m 0644 "$FINAL_FILE" "$HOME/.face.icon"
+avatar_updated=0
+if update_file_if_changed "$TMP_FILE" "$FINAL_FILE"; then
+  avatar_updated=1
+fi
+
+for old_ext in png jpg gif webp; do
+  old_file="${AVATAR_DIR}/${AVATAR_BASENAME}.${old_ext}"
+  if [[ "$old_file" != "$FINAL_FILE" ]]; then
+    rm -f "$old_file"
+  fi
+done
+
+update_file_if_changed "$FINAL_FILE" "$HOME/.face" || true
+update_file_if_changed "$FINAL_FILE" "$HOME/.face.icon" || true
 
 USER_PATH="/org/freedesktop/Accounts/User$(id -u)"
-if ! gdbus call --system \
-  --dest org.freedesktop.Accounts \
-  --object-path "$USER_PATH" \
-  --method org.freedesktop.Accounts.User.SetIconFile "$FINAL_FILE" >/dev/null; then
-  if [[ -S /run/host/run/dbus/system_bus_socket ]]; then
-    DBUS_SYSTEM_BUS_ADDRESS=unix:path=/run/host/run/dbus/system_bus_socket \
-      gdbus call --system \
-      --dest org.freedesktop.Accounts \
-      --object-path "$USER_PATH" \
-      --method org.freedesktop.Accounts.User.SetIconFile "$FINAL_FILE" >/dev/null
-  else
+if (( avatar_updated == 1 )); then
+  if ! set_accountsservice_icon "$USER_PATH" "$FINAL_FILE"; then
     echo "Unable to reach system D-Bus to set AccountsService icon."
     exit 1
   fi
+  echo "Updated avatar from Gravatar for $SOURCE_LABEL (size=${SIZE})"
+else
+  echo "Avatar unchanged for $SOURCE_LABEL (size=${SIZE})"
 fi
-
-echo "Updated avatar from Gravatar for $SOURCE_LABEL (size=${SIZE})"

@@ -10,6 +10,5 @@ mkdir -p "${XDG_CONFIG_HOME:-$HOME/.config}/gravatar-avatar-sync"
 
 systemctl --user daemon-reload
 systemctl --user enable --now gravatar-avatar-sync.timer
-systemctl --user start gravatar-avatar-sync.service
 
-echo "Installed and started gravatar-avatar-sync."
+echo "Installed gravatar-avatar-sync and enabled timer."
