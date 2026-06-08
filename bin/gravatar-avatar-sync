@@ -1,6 +1,30 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# ---------------------------------------------------------------------------
+# Locate the library directory relative to this script so that both the
+# in-repo and installed layouts work transparently:
+#   In-repo:   bin/gravatar-avatar-sync  →  ../lib/gravatar-avatar-sync/
+#   Installed: ~/.local/bin/…            →  ~/.local/lib/gravatar-avatar-sync/
+# ---------------------------------------------------------------------------
+LIB_DIR="$(dirname "$(realpath "${BASH_SOURCE[0]}")")/../lib/gravatar-avatar-sync"
+if [[ ! -d "$LIB_DIR" ]]; then
+  echo "Error: library directory not found: $LIB_DIR" >&2
+  exit 1
+fi
+
+# shellcheck source=../lib/gravatar-avatar-sync/display.sh
+source "$LIB_DIR/display.sh"
+# shellcheck source=../lib/gravatar-avatar-sync/identity.sh
+source "$LIB_DIR/identity.sh"
+# shellcheck source=../lib/gravatar-avatar-sync/fetch.sh
+source "$LIB_DIR/fetch.sh"
+# shellcheck source=../lib/gravatar-avatar-sync/update.sh
+source "$LIB_DIR/update.sh"
+
+# ---------------------------------------------------------------------------
+# Configuration
+# ---------------------------------------------------------------------------
 CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/gravatar-avatar-sync"
 EMAIL_CONFIG_FILE="$CONFIG_DIR/email"
 USERNAME_CONFIG_FILE="$CONFIG_DIR/username"
@@ -12,8 +36,6 @@ CURL_MAX_TIME="${GRAVATAR_CURL_MAX_TIME:-45}"
 CURL_RETRY="${GRAVATAR_CURL_RETRY:-3}"
 CURL_RETRY_DELAY="${GRAVATAR_CURL_RETRY_DELAY:-2}"
 SOURCE_LABEL=""
-USERNAME="${GRAVATAR_USERNAME:-}"
-EMAIL=""
 
 require_tools() {
   local required_tools tool
@@ -156,47 +178,38 @@ else
   SIZE="$(detect_avatar_size)"
 fi
 
-if [[ $# -gt 0 ]]; then
-  EMAIL="$1"
-elif [[ -n "${GRAVATAR_EMAIL:-}" ]]; then
-  EMAIL="$GRAVATAR_EMAIL"
-elif [[ -f "$EMAIL_CONFIG_FILE" ]]; then
-  EMAIL="$(<"$EMAIL_CONFIG_FILE")"
-else
-  EMAIL="$(git config --global --get user.email || true)"
+# ---------------------------------------------------------------------------
+# Load provider (default: gravatar)
+# Set GRAVATAR_PROVIDER to the name of a script in lib/providers/ to switch.
+# ---------------------------------------------------------------------------
+PROVIDER="${GRAVATAR_PROVIDER:-gravatar}"
+PROVIDER_SCRIPT="$LIB_DIR/providers/${PROVIDER}.sh"
+if [[ ! -f "$PROVIDER_SCRIPT" ]]; then
+  echo "Error: provider not found: $PROVIDER (expected $PROVIDER_SCRIPT)" >&2
+  exit 1
 fi
+# shellcheck disable=SC1090
+source "$PROVIDER_SCRIPT"
 
-if [[ -z "$USERNAME" && -f "$USERNAME_CONFIG_FILE" ]]; then
-  USERNAME="$(<"$USERNAME_CONFIG_FILE")"
-fi
-USERNAME="$(trim "$USERNAME")"
+# ---------------------------------------------------------------------------
+# Resolve identity
+# ---------------------------------------------------------------------------
+USERNAME="${GRAVATAR_USERNAME:-}"
+EMAIL=""
+SOURCE_LABEL=""
+resolve_identity "${1:-}"
 
-if [[ -n "$USERNAME" ]]; then
-  PROFILE_URL="https://gravatar.com/${USERNAME}.json"
-  PROFILE_JSON="$(curl_get "$PROFILE_URL")"
-  URL="$(printf '%s' "$PROFILE_JSON" | jq -r 'first(([.entry[0].photos[]?.value, .entry[0].thumbnailUrl] | map(select(type == "string" and length > 0)))[]) // empty')"
-  if [[ -z "$URL" ]]; then
-    echo "Could not find photo URL in Gravatar profile for username: $USERNAME"
-    exit 1
-  fi
-  if [[ "$URL" == *\?* ]]; then
-    URL="${URL}&s=${SIZE}&d=${DEFAULT_STYLE}"
-  else
-    URL="${URL}?s=${SIZE}&d=${DEFAULT_STYLE}"
-  fi
-  SOURCE_LABEL="$USERNAME"
-else
-  EMAIL="$(trim "$EMAIL")"
-  EMAIL="$(printf '%s' "$EMAIL" | tr '[:upper:]' '[:lower:]')"
-  if [[ -z "$EMAIL" ]]; then
-    echo "No identity found. Set GRAVATAR_USERNAME, GRAVATAR_EMAIL, or config files in $CONFIG_DIR."
-    exit 1
-  fi
-  HASH="$(printf '%s' "$EMAIL" | md5sum | awk '{print $1}')"
-  URL="https://www.gravatar.com/avatar/${HASH}?s=${SIZE}&d=${DEFAULT_STYLE}"
-  SOURCE_LABEL="$EMAIL"
-fi
+# ---------------------------------------------------------------------------
+# Resolve avatar URL via the active provider
+# Sets globals: PROVIDER_URL  SOURCE_LABEL
+# ---------------------------------------------------------------------------
+PROVIDER_URL=""
+"${PROVIDER}_resolve_url" "$USERNAME" "$EMAIL" "$SIZE" "$DEFAULT_STYLE"
+URL="$PROVIDER_URL"
 
+# ---------------------------------------------------------------------------
+# Fetch and validate
+# ---------------------------------------------------------------------------
 mkdir -p "$AVATAR_DIR"
 TMP_FILE="$(mktemp "${AVATAR_DIR}/.${AVATAR_BASENAME}.XXXXXX")"
 trap 'rm -f "$TMP_FILE"' EXIT
@@ -215,6 +228,9 @@ case "$MIME_TYPE" in
     ;;
 esac
 
+# ---------------------------------------------------------------------------
+# Write local files and update AccountsService
+# ---------------------------------------------------------------------------
 FINAL_FILE="${AVATAR_DIR}/${AVATAR_BASENAME}.${EXT}"
 
 avatar_updated=0

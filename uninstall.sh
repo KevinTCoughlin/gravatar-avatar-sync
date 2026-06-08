@@ -11,5 +11,6 @@ rm -f \
 
 systemctl --user daemon-reload
 systemctl --user reset-failed gravatar-avatar-sync.service >/dev/null 2>&1 || true
+rm -rf "$HOME/.local/lib/gravatar-avatar-sync"
 
 echo "Uninstalled gravatar-avatar-sync files."

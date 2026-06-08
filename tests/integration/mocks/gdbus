@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+state_dir="${MOCK_STATE_DIR:?MOCK_STATE_DIR must be set}"
+calls_file="$state_dir/gdbus-calls.log"
+
+context="primary"
+result="${MOCK_GDBUS_PRIMARY_RESULT:-success}"
+if [[ -n "${DBUS_SYSTEM_BUS_ADDRESS:-}" ]]; then
+  context="fallback"
+  result="${MOCK_GDBUS_FALLBACK_RESULT:-fail}"
+fi
+
+printf '%s|%s\n' "$context" "$*" >>"$calls_file"
+
+if [[ "$result" == "success" ]]; then
+  exit 0
+fi
+
+exit 1
