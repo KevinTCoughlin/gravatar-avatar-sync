@@ -1,9 +1,26 @@
 [Unit]
 Description=Sync account avatar from Gravatar
-After=network-online.target
-Wants=network-online.target
+# network-online.target is a system target and is not available to the user
+# manager; transient network failures are handled by curl retries and by the
+# timer's next activation instead.
 
 [Service]
 Type=oneshot
 TimeoutStartSec=2min
 ExecStart=%h/.local/bin/gravatar-avatar-sync
+
+# Hardening. ProtectHome is intentionally not set: the service must write
+# ~/.face, ~/.face.icon and the avatar cache.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+ProtectClock=true
+RestrictSUIDSGID=true
+RestrictRealtime=true
+RestrictNamespaces=true
+LockPersonality=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM

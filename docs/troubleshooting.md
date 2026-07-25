@@ -57,10 +57,10 @@ The script updates AccountsService via D-Bus. If the GNOME lock screen or user m
 systemctl --user restart gravatar-avatar-sync.service
 ```
 
-If the problem persists, confirm `gdbus` is installed and the D-Bus session is available:
+If the problem persists, confirm `gdbus` is installed and the system D-Bus is available:
 
 ```bash
-gdbus call --session --dest org.freedesktop.Accounts --object-path /org/freedesktop/Accounts --method org.freedesktop.Accounts.FindUserByName "$USER"
+gdbus call --system --dest org.freedesktop.Accounts --object-path /org/freedesktop/Accounts --method org.freedesktop.Accounts.FindUserByName "$USER"
 ```
 
 For other login managers (SDDM, LightDM), log out and back in after a sync to pick up the updated `~/.face` file.
@@ -94,7 +94,7 @@ A `curl: (22) … 404 Not Found` error when using username-based config means th
 
 ## Unsupported image type
 
-If the script exits with `Unsupported image type from Gravatar`, Gravatar returned an unexpected response (HTML or a redirect page) instead of an image. Set `GRAVATAR_DEFAULT=404` to get an explicit HTTP error that makes the root cause clearer:
+If the script exits with `Unsupported image type`, Gravatar returned an unexpected response (HTML or a redirect page) instead of an image. Set `GRAVATAR_DEFAULT=404` to get an explicit HTTP error that makes the root cause clearer:
 
 ```bash
 GRAVATAR_DEFAULT=404 gravatar-avatar-sync

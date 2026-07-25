@@ -22,6 +22,16 @@ assert_equals() {
   fi
 }
 
+assert_nonzero() {
+  local desc="$1" status="$2"
+  if (( status != 0 )); then
+    pass_test "$desc"
+  else
+    echo "  expected non-zero exit status, got: $status"
+    fail_test "$desc"
+  fi
+}
+
 assert_contains() {
   local desc="$1" needle="$2" haystack="$3"
   if [[ "$haystack" == *"$needle"* ]]; then
@@ -41,9 +51,24 @@ MOCK_DIR="$(mktemp -d)"
 FAKE_HOME="$(mktemp -d)"
 trap 'rm -rf "$MOCK_DIR" "$FAKE_HOME"' EXIT
 
-# Helper: run the main script with mocked PATH prepended and an isolated HOME
+# Helper: run the main script hermetically — mocked PATH, isolated HOME and
+# XDG dirs, and a clean slate of GRAVATAR_* variables. Leading NAME=VALUE
+# arguments are passed to the script's environment.
+# Usage: run_script [NAME=VALUE ...] [script args...]
 run_script() {
-  HOME="$FAKE_HOME" PATH="$MOCK_DIR:$PATH" bash "$MAIN_SCRIPT" "$@"
+  local envs=()
+  while [[ $# -gt 0 && "$1" == *=* ]]; do
+    envs+=("$1")
+    shift
+  done
+  env -u GRAVATAR_EMAIL -u GRAVATAR_USERNAME -u GRAVATAR_SIZE -u GRAVATAR_DEFAULT \
+    -u GRAVATAR_PROVIDER \
+    HOME="$FAKE_HOME" \
+    XDG_CONFIG_HOME="$FAKE_HOME/.config" \
+    XDG_DATA_HOME="$FAKE_HOME/.local/share" \
+    PATH="$MOCK_DIR:$PATH" \
+    "${envs[@]}" \
+    bash "$MAIN_SCRIPT" "$@"
 }
 
 # ---------------------------------------------------------------------------
@@ -60,21 +85,17 @@ install_mock() {
 # Scenario 1: no identity supplied → script exits with a clear error message
 # ---------------------------------------------------------------------------
 
-unset GRAVATAR_EMAIL GRAVATAR_USERNAME || true
-
 # Provide a curl stub so we don't hit the network; the script should exit
 # before it ever calls curl, but have it available just in case.
 install_mock curl 'echo "{}" ; exit 0'
 install_mock gdbus 'exit 0'
 install_mock file 'echo "image/jpeg"'
 
-error_output="$(
-  GRAVATAR_EMAIL="" GRAVATAR_USERNAME="" \
-  HOME="$FAKE_HOME" PATH="$MOCK_DIR:$PATH" \
-  bash "$MAIN_SCRIPT" 2>&1 || true
-)"
+status=0
+error_output="$(run_script 2>&1)" || status=$?
 
 assert_contains "no identity: exits with helpful message" "No identity found" "$error_output"
+assert_nonzero "no identity: exits non-zero" "$status"
 
 # ---------------------------------------------------------------------------
 # Scenario 2: email provided via GRAVATAR_EMAIL → builds correct Gravatar URL
@@ -102,12 +123,7 @@ install_mock file 'echo "image/jpeg"'
 # Stub commands that the script will call at the end but we cannot use in CI
 install_mock gdbus 'exit 0'
 
-output="$(
-  GRAVATAR_EMAIL="test@example.com" \
-  GRAVATAR_SIZE="256" \
-  HOME="$FAKE_HOME" PATH="$MOCK_DIR:$PATH" \
-  bash "$MAIN_SCRIPT" 2>&1
-)"
+output="$(run_script GRAVATAR_EMAIL="test@example.com" GRAVATAR_SIZE="256" 2>&1)"
 
 assert_contains "email path: success message shown"      "Updated avatar from Gravatar" "$output"
 assert_contains "email path: source label in output"     "test@example.com"             "$output"
@@ -159,12 +175,7 @@ install_mock curl "
 install_mock file 'echo "image/jpeg"'
 install_mock gdbus 'exit 0'
 
-output="$(
-  GRAVATAR_USERNAME="testuser" \
-  GRAVATAR_SIZE="128" \
-  HOME="$FAKE_HOME" PATH="$MOCK_DIR:$PATH" \
-  bash "$MAIN_SCRIPT" 2>&1
-)"
+output="$(run_script GRAVATAR_USERNAME="testuser" GRAVATAR_SIZE="128" 2>&1)"
 
 assert_contains "username path: success message shown"  "Updated avatar from Gravatar" "$output"
 assert_contains "username path: source label in output" "testuser"                     "$output"
@@ -189,29 +200,25 @@ install_mock curl '
 install_mock file 'echo "text/plain"'
 install_mock gdbus 'exit 0'
 
-mime_error="$(
-  GRAVATAR_EMAIL="test@example.com" \
-  GRAVATAR_SIZE="256" \
-  HOME="$FAKE_HOME" PATH="$MOCK_DIR:$PATH" \
-  bash "$MAIN_SCRIPT" 2>&1 || true
-)"
+mime_status=0
+mime_error="$(run_script GRAVATAR_EMAIL="test@example.com" GRAVATAR_SIZE="256" 2>&1)" || mime_status=$?
 
 assert_contains "unsupported MIME type: exits with error" "Unsupported image type" "$mime_error"
+assert_nonzero "unsupported MIME type: exits non-zero" "$mime_status"
 
 # ---------------------------------------------------------------------------
 # Scenario 5: ShellCheck passes on all scripts (lint check as integration test)
 # ---------------------------------------------------------------------------
 
 if command -v shellcheck >/dev/null 2>&1; then
-  if shellcheck -x --source-path=SCRIPTDIR \
+  mapfile -t shell_scripts < <(
+    printf '%s\n' \
       "$MAIN_SCRIPT" \
       "$REPO_ROOT/install.sh" \
-      "$REPO_ROOT/uninstall.sh" \
-      "$REPO_ROOT/lib/gravatar-avatar-sync/display.sh" \
-      "$REPO_ROOT/lib/gravatar-avatar-sync/identity.sh" \
-      "$REPO_ROOT/lib/gravatar-avatar-sync/fetch.sh" \
-      "$REPO_ROOT/lib/gravatar-avatar-sync/update.sh" \
-      "$REPO_ROOT/lib/gravatar-avatar-sync/providers/gravatar.sh" 2>&1; then
+      "$REPO_ROOT/uninstall.sh"
+    find "$REPO_ROOT/lib" "$REPO_ROOT/tests" -type f \( -name '*.sh' -o -name '*.bash' \)
+  )
+  if shellcheck -x --source-path=SCRIPTDIR "${shell_scripts[@]}" 2>&1; then
     pass_test "shellcheck passes on all shell scripts"
   else
     fail_test "shellcheck passes on all shell scripts"

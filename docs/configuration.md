@@ -28,6 +28,8 @@ The script resolves your Gravatar identity in the following order (first match w
 | `GRAVATAR_EMAIL` | _(unset)_ | Your email address registered with Gravatar |
 | `GRAVATAR_DEFAULT` | `mp` | Default avatar style when no Gravatar is found (e.g. `mp`, `identicon`, `retro`) |
 | `GRAVATAR_SIZE` | auto-detected | Pixel size of the downloaded avatar image |
+| `GRAVATAR_CURL_MAX_FILESIZE` | `10485760` | Maximum accepted download size in bytes |
+| `GRAVATAR_ALLOW_ROOT` | _(unset)_ | Set to `1` to allow running as root (updates root's avatar, not yours) |
 
 ## Image size behavior
 

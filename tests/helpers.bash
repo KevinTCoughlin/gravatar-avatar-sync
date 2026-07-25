@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # Shared test helpers for gravatar-avatar-sync bats tests
 
+# SCRIPT is consumed by the .bats files that `load` this helper.
+# shellcheck disable=SC2034
 SCRIPT="$(cd "$BATS_TEST_DIRNAME/.." && pwd)/bin/gravatar-avatar-sync"
 
 # Default profile JSON returned by the mock curl for .json requests

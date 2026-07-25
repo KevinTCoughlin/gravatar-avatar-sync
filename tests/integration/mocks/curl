@@ -30,8 +30,12 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+# NOTE: the default must live in its own variable — an inline ${VAR:-...}
+# default containing '}' terminates the expansion early and emits garbage.
+default_profile_json='{"entry":[{"photos":[{"value":"https://cdn.example/avatar.png"}]}]}'
+
 if [[ "$url" == *".json" ]]; then
-  printf '%s' "${MOCK_PROFILE_JSON:-{\"entry\":[{\"photos\":[{\"value\":\"https://cdn.example/avatar.png\"}]}]}}"
+  printf '%s' "${MOCK_PROFILE_JSON:-$default_profile_json}"
   exit 0
 fi
 

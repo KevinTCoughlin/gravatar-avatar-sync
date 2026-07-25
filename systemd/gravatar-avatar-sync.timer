@@ -4,6 +4,7 @@ Description=Periodic Gravatar avatar sync
 [Timer]
 OnBootSec=2m
 OnUnitActiveSec=12h
+RandomizedDelaySec=5m
 Persistent=true
 Unit=gravatar-avatar-sync.service
 

@@ -83,7 +83,7 @@ test_success_primary_dbus_and_file_writes() {
 
 start_unix_socket() {
   export HOST_DBUS_SOCKET="$CASE_ROOT/system_bus_socket"
-  TEST_SOCKET_PATH="$HOST_DBUS_SOCKET" python - <<'PY' &
+  TEST_SOCKET_PATH="$HOST_DBUS_SOCKET" python3 - <<'PY' &
 import os
 import socket
 import time

@@ -6,6 +6,9 @@ set -euo pipefail
 # in-repo and installed layouts work transparently:
 #   In-repo:   bin/gravatar-avatar-sync  →  ../lib/gravatar-avatar-sync/
 #   Installed: ~/.local/bin/…            →  ~/.local/lib/gravatar-avatar-sync/
+#
+# This script is an orchestrator only: every behaviour lives in a library
+# module so that the code under test is the code that runs in production.
 # ---------------------------------------------------------------------------
 LIB_DIR="$(dirname "$(realpath "${BASH_SOURCE[0]}")")/../lib/gravatar-avatar-sync"
 if [[ ! -d "$LIB_DIR" ]]; then
@@ -31,28 +34,26 @@ USERNAME_CONFIG_FILE="$CONFIG_DIR/username"
 AVATAR_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/avatars"
 AVATAR_BASENAME="gravatar-avatar"
 DEFAULT_STYLE="${GRAVATAR_DEFAULT:-mp}"
-CURL_CONNECT_TIMEOUT="${GRAVATAR_CURL_CONNECT_TIMEOUT:-10}"
-CURL_MAX_TIME="${GRAVATAR_CURL_MAX_TIME:-45}"
-CURL_RETRY="${GRAVATAR_CURL_RETRY:-3}"
-CURL_RETRY_DELAY="${GRAVATAR_CURL_RETRY_DELAY:-2}"
-SOURCE_LABEL=""
 
 require_tools() {
   local required_tools tool
   required_tools=(curl file gdbus md5sum jq)
   for tool in "${required_tools[@]}"; do
     if ! command -v "$tool" >/dev/null 2>&1; then
-      echo "Missing required tool: $tool"
+      echo "Missing required tool: $tool" >&2
       exit 1
     fi
   done
 }
 
-trim() {
-  local value="$1"
-  value="${value#"${value%%[![:space:]]*}"}"
-  value="${value%"${value##*[![:space:]]}"}"
-  printf '%s' "$value"
+# Running under sudo would sync root's home and root's AccountsService entry,
+# which is virtually never what the caller intends.
+require_non_root() {
+  if [[ "$(id -u)" -eq 0 && -z "${GRAVATAR_ALLOW_ROOT:-}" ]]; then
+    echo "Refusing to run as root: this would update root's avatar, not yours." >&2
+    echo "Run as your own user, or set GRAVATAR_ALLOW_ROOT=1 to override." >&2
+    exit 1
+  fi
 }
 
 validate_positive_int() {
@@ -60,129 +61,34 @@ validate_positive_int() {
   [[ "$value" =~ ^[0-9]+$ ]] && (( value > 0 ))
 }
 
-curl_get() {
-  curl \
-    --fail \
-    --silent \
-    --show-error \
-    --location \
-    --connect-timeout "$CURL_CONNECT_TIMEOUT" \
-    --max-time "$CURL_MAX_TIME" \
-    --retry "$CURL_RETRY" \
-    --retry-delay "$CURL_RETRY_DELAY" \
-    --retry-all-errors \
-    "$@"
-}
-
-update_file_if_changed() {
-  local source="$1"
-  local dest="$2"
-
-  if [[ -f "$dest" ]] && cmp -s "$source" "$dest"; then
-    return 1
-  fi
-
-  install -m 0644 "$source" "$dest"
-  return 0
-}
-
-set_accountsservice_icon() {
-  local user_path icon_file
-  user_path="$1"
-  icon_file="$2"
-
-  if gdbus call --system \
-    --dest org.freedesktop.Accounts \
-    --object-path "$user_path" \
-    --method org.freedesktop.Accounts.User.SetIconFile "$icon_file" >/dev/null; then
-    return 0
-  fi
-
-  if [[ -S /run/host/run/dbus/system_bus_socket ]]; then
-    DBUS_SYSTEM_BUS_ADDRESS=unix:path=/run/host/run/dbus/system_bus_socket \
-      gdbus call --system \
-      --dest org.freedesktop.Accounts \
-      --object-path "$user_path" \
-      --method org.freedesktop.Accounts.User.SetIconFile "$icon_file" >/dev/null
-    return 0
-  fi
-
-  return 1
-}
-
-detect_avatar_size() {
-  local max_dim scale_factor text_scale base_size detected_size
-  max_dim=""
-  scale_factor="1"
-  text_scale="1"
-
-  if command -v xrandr >/dev/null 2>&1 && [[ -n "${DISPLAY:-}" ]]; then
-    max_dim="$(xrandr --current 2>/dev/null | awk '
-      / connected/ {
-        for (i = 1; i <= NF; i++) {
-          if ($i ~ /^[0-9]+x[0-9]+\+/) {
-            split($i, a, /x|\+/)
-            w = a[1] + 0
-            h = a[2] + 0
-            if (w > m) m = w
-            if (h > m) m = h
-          }
-        }
-      }
-      END { if (m > 0) print m }
-    ')"
-  fi
-
-  if command -v gsettings >/dev/null 2>&1; then
-    scale_factor="$(gsettings get org.gnome.desktop.interface scaling-factor 2>/dev/null | awk '{print $NF}' || true)"
-    text_scale="$(gsettings get org.gnome.desktop.interface text-scaling-factor 2>/dev/null | awk '{print $NF}' || true)"
-    [[ "$scale_factor" =~ ^[0-9]+$ ]] || scale_factor="1"
-    (( scale_factor < 1 )) && scale_factor="1"
-    [[ "$text_scale" =~ ^[0-9]+([.][0-9]+)?$ ]] || text_scale="1"
-    [[ -z "$scale_factor" ]] && scale_factor="1"
-    [[ -z "$text_scale" ]] && text_scale="1"
-  fi
-
-  if [[ -n "$max_dim" ]]; then
-    if (( max_dim >= 3840 )); then
-      base_size=1536
-    elif (( max_dim >= 2560 )); then
-      base_size=1280
-    elif (( max_dim >= 1920 )); then
-      base_size=1024
-    else
-      base_size=768
+resolve_size() {
+  local size
+  if [[ -n "${GRAVATAR_SIZE:-}" ]]; then
+    size="$(trim "$GRAVATAR_SIZE")"
+    if ! validate_positive_int "$size" || (( size > 2048 )); then
+      echo "Invalid GRAVATAR_SIZE: $size (expected integer in range 1-2048)." >&2
+      exit 1
     fi
   else
-    base_size=1024
+    size="$(detect_avatar_size)"
   fi
-
-  detected_size="$(awk -v b="$base_size" -v s="$scale_factor" -v t="$text_scale" 'BEGIN {
-    v = int((b * s * t) + 0.5)
-    if (v < 512) v = 512
-    if (v > 2048) v = 2048
-    print v
-  }')"
-  printf '%s' "$detected_size"
+  printf '%s' "$size"
 }
 
+require_non_root
 require_tools
 
-if [[ -n "${GRAVATAR_SIZE:-}" ]]; then
-  SIZE="$(trim "$GRAVATAR_SIZE")"
-  if ! validate_positive_int "$SIZE" || (( SIZE > 2048 )); then
-    echo "Invalid GRAVATAR_SIZE: $SIZE (expected integer in range 1-2048)."
-    exit 1
-  fi
-else
-  SIZE="$(detect_avatar_size)"
-fi
+SIZE="$(resolve_size)"
 
 # ---------------------------------------------------------------------------
 # Load provider (default: gravatar)
 # Set GRAVATAR_PROVIDER to the name of a script in lib/providers/ to switch.
 # ---------------------------------------------------------------------------
 PROVIDER="${GRAVATAR_PROVIDER:-gravatar}"
+if [[ ! "$PROVIDER" =~ ^[A-Za-z0-9_-]+$ ]]; then
+  echo "Error: invalid provider name: $PROVIDER" >&2
+  exit 1
+fi
 PROVIDER_SCRIPT="$LIB_DIR/providers/${PROVIDER}.sh"
 if [[ ! -f "$PROVIDER_SCRIPT" ]]; then
   echo "Error: provider not found: $PROVIDER (expected $PROVIDER_SCRIPT)" >&2
@@ -214,19 +120,8 @@ mkdir -p "$AVATAR_DIR"
 TMP_FILE="$(mktemp "${AVATAR_DIR}/.${AVATAR_BASENAME}.XXXXXX")"
 trap 'rm -f "$TMP_FILE"' EXIT
 
-curl_get "$URL" -o "$TMP_FILE"
-
-MIME_TYPE="$(file --mime-type -b "$TMP_FILE")"
-case "$MIME_TYPE" in
-  image/png) EXT="png" ;;
-  image/jpeg) EXT="jpg" ;;
-  image/gif) EXT="gif" ;;
-  image/webp) EXT="webp" ;;
-  *)
-    echo "Unsupported image type from Gravatar: $MIME_TYPE"
-    exit 1
-    ;;
-esac
+fetch_avatar "$URL" "$TMP_FILE"
+EXT="$(validate_mime "$TMP_FILE")"
 
 # ---------------------------------------------------------------------------
 # Write local files and update AccountsService
@@ -234,7 +129,13 @@ esac
 FINAL_FILE="${AVATAR_DIR}/${AVATAR_BASENAME}.${EXT}"
 
 avatar_updated=0
-if update_file_if_changed "$TMP_FILE" "$FINAL_FILE"; then
+write_status=0
+write_local_files "$TMP_FILE" "$FINAL_FILE" || write_status=$?
+if (( write_status > 1 )); then
+  echo "Failed to write avatar files under $AVATAR_DIR." >&2
+  exit 1
+fi
+if (( write_status == 0 )); then
   avatar_updated=1
 fi
 
@@ -245,15 +146,11 @@ for old_ext in png jpg gif webp; do
   fi
 done
 
-update_file_if_changed "$FINAL_FILE" "$HOME/.face" || true
-update_file_if_changed "$FINAL_FILE" "$HOME/.face.icon" || true
+# Always re-apply the icon: AccountsService state can be reset independently of
+# the cached image (reinstall, profile reset, or a previously failed D-Bus call).
+update_accounts_service "$FINAL_FILE"
 
-USER_PATH="/org/freedesktop/Accounts/User$(id -u)"
 if (( avatar_updated == 1 )); then
-  if ! set_accountsservice_icon "$USER_PATH" "$FINAL_FILE"; then
-    echo "Unable to reach system D-Bus to set AccountsService icon."
-    exit 1
-  fi
   echo "Updated avatar from Gravatar for $SOURCE_LABEL (size=${SIZE})"
 else
   echo "Avatar unchanged for $SOURCE_LABEL (size=${SIZE})"

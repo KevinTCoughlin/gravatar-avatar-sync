@@ -24,15 +24,11 @@ jobs:
 
       - name: Run ShellCheck
         run: |
-          shellcheck -x --source-path=SCRIPTDIR \
-            bin/gravatar-avatar-sync \
-            install.sh \
-            uninstall.sh \
-            lib/gravatar-avatar-sync/display.sh \
-            lib/gravatar-avatar-sync/identity.sh \
-            lib/gravatar-avatar-sync/fetch.sh \
-            lib/gravatar-avatar-sync/update.sh \
-            lib/gravatar-avatar-sync/providers/gravatar.sh
+          mapfile -t scripts < <(
+            printf '%s\n' bin/gravatar-avatar-sync install.sh uninstall.sh
+            find lib tests -type f \( -name '*.sh' -o -name '*.bash' \)
+          )
+          shellcheck -x --source-path=SCRIPTDIR "${scripts[@]}"
 
   unit-tests:
     name: Unit Tests
@@ -62,3 +58,6 @@ jobs:
 
       - name: Run integration tests
         run: bash tests/integration.sh
+
+      - name: Run D-Bus integration tests
+        run: bash tests/integration/run.sh

@@ -7,6 +7,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- `bin/gravatar-avatar-sync` is now a true orchestrator: the fetch, write and
+  AccountsService logic it previously duplicated is gone, so the library
+  modules under `lib/gravatar-avatar-sync/` are the only implementations (and
+  the ones covered by tests).
+- All HTTP requests, including the Gravatar profile lookup, now go through one
+  hardened `curl` wrapper: HTTPS-only (including redirects), shared
+  timeout/retry settings, and a maximum download size.
+- Gravatar profile JSON is parsed with `jq` instead of `grep`/`cut`/`sed`, so
+  pretty-printed responses and unrelated `value` keys are handled correctly.
+- The AccountsService icon is re-applied on every successful run instead of
+  only when the image bytes change, repairing externally reset avatars.
+- Avatar files are staged in a temporary file and renamed into place, so an
+  interrupted run can no longer leave a truncated `~/.face`.
+- `install.sh` now installs every library module it finds, so adding a module
+  no longer requires editing the installer.
+- The systemd unit is sandboxed (`NoNewPrivileges`, `PrivateTmp`,
+  `SystemCallFilter=@system-service`, restricted address families, …), the
+  timer applies a randomized delay, and the unusable `network-online.target`
+  ordering was removed from the user unit.
+
+### Fixed
+
+- A failing host-D-Bus fallback (`/run/host/run/dbus/system_bus_socket`) was
+  reported as success; the real status is now propagated and errors go to
+  stderr.
+- Errors (`Unsupported image type`, missing tools, invalid `GRAVATAR_SIZE`) are
+  written to stderr instead of stdout.
+- Usernames and e-mail addresses are validated before being interpolated into a
+  URL.
+- Whitespace trimming no longer uses `xargs`, which mangled or failed on values
+  containing quotes.
+- Running as root (for example via `sudo`) is refused by default; it silently
+  updated root's avatar instead of the invoking user's.
+- Integration tests isolate `XDG_CONFIG_HOME`/`XDG_DATA_HOME` in addition to
+  `HOME`; previously they overwrote the real user's avatar cache.
+
 ## [0.1.0] - 2026-05-28
 
 ### Added

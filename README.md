@@ -92,6 +92,8 @@ printf '%s\n' 'your-email@example.com' > ~/.config/gravatar-avatar-sync/email
 | `GRAVATAR_CURL_MAX_TIME` | `45` | Curl total request timeout (seconds) |
 | `GRAVATAR_CURL_RETRY` | `3` | Curl retry attempts |
 | `GRAVATAR_CURL_RETRY_DELAY` | `2` | Delay between curl retries (seconds) |
+| `GRAVATAR_CURL_MAX_FILESIZE` | `10485760` | Maximum accepted download size (bytes) |
+| `GRAVATAR_ALLOW_ROOT` | _(unset)_ | Set to `1` to allow running as root (updates root's avatar, not yours) |
 
 ### Image size behavior
 
@@ -105,9 +107,11 @@ printf '%s\n' 'your-email@example.com' > ~/.config/gravatar-avatar-sync/email
 
 ### Runtime behavior
 
-- Username profile parsing uses `jq` for robust JSON handling.
-- Download requests use retry/timeout controls to avoid hanging indefinitely.
-- If the downloaded avatar is unchanged, the script skips unnecessary rewrites and D-Bus updates.
+- Username profile parsing uses `jq` for robust JSON handling, so pretty-printed responses and unrelated `value` keys are handled correctly.
+- All HTTP requests (profile lookup and image download) go through one hardened `curl` wrapper: HTTPS-only including redirects, retry/timeout controls, and a maximum download size.
+- If the downloaded avatar is unchanged, the script skips rewriting the cached files, but it still re-applies the AccountsService icon so externally reset avatars are repaired.
+- Avatar files are written to a temporary file and renamed into place, so an interrupted run never leaves a truncated `~/.face`.
+- Running as root is refused by default, because it would update root's account rather than the invoking user's.
 
 ## Timer / Service Lifecycle
 
@@ -176,10 +180,11 @@ Run the test suite:
 bats tests/
 ```
 
-Run the CI-safe integration side-effect tests with:
+Run the CI-safe integration suites with:
 
 ```bash
-bash tests/integration/run.sh
+bash tests/integration.sh      # end-to-end behaviour with mocked network/D-Bus
+bash tests/integration/run.sh  # file writes and D-Bus fallback side effects
 ```
 
 ## Uninstall
@@ -200,7 +205,7 @@ This disables the timer, removes the service and timer unit files, and deletes t
 | `Could not find photo URL in Gravatar profile` | Profile JSON has no photo set | Upload a photo at [gravatar.com](https://gravatar.com) or switch to email-based config. |
 | `No identity found` | No username, email, or git email configured | Create `~/.config/gravatar-avatar-sync/username` or `…/email` (see [Configuration](#configuration)). |
 | `Unable to reach system D-Bus` | `accountsservice` not running, or D-Bus socket missing | Ensure `accounts-daemon` is running: `systemctl status accounts-daemon`. On containerised desktops (Toolbox/distrobox), the socket is at `/run/host/run/dbus/system_bus_socket`; the script falls back to this path automatically. |
-| `Unsupported image type from Gravatar` | Gravatar returned HTML or a non-image (e.g. default page) | The `GRAVATAR_DEFAULT` style may be returning unexpected content. Try `GRAVATAR_DEFAULT=404` to get an explicit error, then confirm your identity config is correct. |
+| `Unsupported image type` | Gravatar returned HTML or a non-image (e.g. default page) | The `GRAVATAR_DEFAULT` style may be returning unexpected content. Try `GRAVATAR_DEFAULT=404` to get an explicit error, then confirm your identity config is correct. |
 | Avatar updated in `~/.face` but login screen unchanged | Login manager caches the old icon | Log out and back in. For GDM, run `systemctl restart gdm` (as root) if the issue persists. |
 | `Permission denied` writing `~/.face` | File is owned by root or has restrictive permissions | Run `chmod 644 ~/.face ~/.face.icon` and `chown $USER ~/.face ~/.face.icon`. |
 | `systemctl --user` commands fail | Systemd user instance not running | Ensure `loginctl enable-linger $USER` has been run (required on some minimal installs). |
@@ -233,10 +238,10 @@ Every push and pull request runs the following checks via [GitHub Actions](.gith
 | Stage | What it does |
 |---|---|
 | **ShellCheck** | Lints all shell scripts (including `lib/` modules) with [ShellCheck](https://www.shellcheck.net/) |
-| **Unit Tests** | Runs `tests/unit.sh` — tests pure functions (avatar-size detection, email normalisation, hash generation, URL construction) |
-| **Integration Tests** | Runs `tests/integration.sh` — exercises the full script with mocked network and D-Bus calls (CI-safe, no real internet or display required) |
+| **Unit Tests** | Runs `tests/unit.sh` — sources the shipped library modules and tests them directly (avatar-size detection, trimming/normalisation, identity validation, profile JSON parsing, URL construction) |
+| **Integration Tests** | Runs `tests/integration.sh` and `tests/integration/run.sh` — exercises the full script with mocked network and D-Bus calls (CI-safe, no real internet or display required) |
 
-All three stages must pass before a PR can be merged.
+All stages must pass before a PR can be merged.
 
 ## Architecture
 
@@ -247,7 +252,7 @@ The script is organised into focused library modules installed under
 |---|---|
 | `display.sh` | Auto-detect avatar pixel size from display/DPI settings |
 | `identity.sh` | Resolve username/email from environment, config files, or git |
-| `fetch.sh` | Download avatar image; validate MIME type |
+| `fetch.sh` | Shared hardened HTTP transport (`http_curl`/`http_get_body`); download avatar image; validate MIME type |
 | `update.sh` | Write `~/.face`, `~/.face.icon`, and `AVATAR_DIR`; call AccountsService |
 | `providers/gravatar.sh` | Gravatar-specific URL resolution (username JSON or email hash) |
 

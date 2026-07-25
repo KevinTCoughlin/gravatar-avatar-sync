@@ -1,9 +1,21 @@
 #!/usr/bin/env bash
-# Unit tests for gravatar-avatar-sync helper functions
+# Unit tests for gravatar-avatar-sync library functions.
+#
+# These tests source the production modules directly — they must never
+# re-implement the logic under test, otherwise they stay green while the
+# shipped code diverges.
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-DISPLAY_LIB="$REPO_ROOT/lib/gravatar-avatar-sync/display.sh"
+LIB_DIR="$REPO_ROOT/lib/gravatar-avatar-sync"
+DISPLAY_LIB="$LIB_DIR/display.sh"
+
+# shellcheck source=../lib/gravatar-avatar-sync/display.sh
+source "$DISPLAY_LIB"
+# shellcheck source=../lib/gravatar-avatar-sync/identity.sh
+source "$LIB_DIR/identity.sh"
+# shellcheck source=../lib/gravatar-avatar-sync/providers/gravatar.sh
+source "$LIB_DIR/providers/gravatar.sh"
 
 pass=0
 fail=0
@@ -32,19 +44,31 @@ assert_in_range() {
   fi
 }
 
-# ---------------------------------------------------------------------------
-# Source detect_avatar_size in a subshell to avoid polluting our environment
-# ---------------------------------------------------------------------------
-
-run_detect_avatar_size() {
-  bash -c "
-    # shellcheck source=../lib/gravatar-avatar-sync/display.sh
-    source '$DISPLAY_LIB'
-    detect_avatar_size
-  "
+assert_succeeds() {
+  local desc="$1"
+  shift
+  if "$@" 2>/dev/null; then
+    pass_test "$desc"
+  else
+    fail_test "$desc"
+  fi
 }
 
-size="$(run_detect_avatar_size)"
+assert_fails() {
+  local desc="$1"
+  shift
+  if "$@" 2>/dev/null; then
+    fail_test "$desc"
+  else
+    pass_test "$desc"
+  fi
+}
+
+# ---------------------------------------------------------------------------
+# display.sh — detect_avatar_size
+# ---------------------------------------------------------------------------
+
+size="$(bash -c "source '$DISPLAY_LIB'; detect_avatar_size")"
 assert_in_range "detect_avatar_size returns value in [512, 2048]" 512 2048 "$size"
 if [[ "$size" =~ ^[0-9]+$ ]]; then
   pass_test "detect_avatar_size returns an integer"
@@ -53,73 +77,105 @@ else
   fail_test "detect_avatar_size returns an integer"
 fi
 
-# detect_avatar_size respects GRAVATAR_SIZE env var (capped to [512,2048])
-size_env="$(GRAVATAR_SIZE=800 bash -c "
-  source '$DISPLAY_LIB'
-  SIZE=\"\${GRAVATAR_SIZE:-\$(detect_avatar_size)}\"
-  printf '%s' \"\$SIZE\"
-")"
-assert_equals "GRAVATAR_SIZE env var is honoured" "800" "$size_env"
-
 # ---------------------------------------------------------------------------
-# Email normalisation (lowercase + trim) — logic copied from the main script
+# identity.sh — trim / normalize_email
 # ---------------------------------------------------------------------------
 
-normalise_email() {
-  printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | xargs
-}
+assert_equals "trim strips leading/trailing whitespace" "johndoe" "$(trim "  johndoe  ")"
+assert_equals "trim leaves clean values untouched"      "jane"    "$(trim "jane")"
+assert_equals "trim strips tabs and newlines"           "user"    "$(trim "$(printf '\t user \n')")"
+assert_equals "trim preserves inner spaces"             "a b"     "$(trim "  a b  ")"
 
-assert_equals "email lowercased"                "user@example.com" "$(normalise_email "USER@EXAMPLE.COM")"
-assert_equals "email mixed-case lowercased"     "test@host.org"    "$(normalise_email "Test@Host.Org")"
-assert_equals "email leading/trailing stripped" "a@b.com"          "$(normalise_email "  a@b.com  ")"
-assert_equals "email already clean"             "me@here.net"      "$(normalise_email "me@here.net")"
+assert_equals "email lowercased"                "user@example.com" "$(normalize_email "USER@EXAMPLE.COM")"
+assert_equals "email mixed-case lowercased"     "test@host.org"    "$(normalize_email "Test@Host.Org")"
+assert_equals "email leading/trailing stripped" "a@b.com"          "$(normalize_email "  a@b.com  ")"
+assert_equals "email already clean"             "me@here.net"      "$(normalize_email "me@here.net")"
+# xargs-based trimming used to abort on unbalanced quotes; the pure-bash
+# implementation must not.
+assert_equals "email with a quote is not mangled" "o'brien@example.com" \
+  "$(normalize_email "  O'Brien@Example.com ")"
 
 # ---------------------------------------------------------------------------
-# MD5 hash — verify against a known value
+# identity.sh — validation guards against URL/path injection
+# ---------------------------------------------------------------------------
+
+assert_succeeds "valid username accepted"            validate_username "john.doe-1_x"
+assert_fails    "username with slash rejected"       validate_username "john/../admin"
+assert_fails    "username with space rejected"       validate_username "john doe"
+assert_fails    "empty username rejected"            validate_username ""
+assert_succeeds "valid email accepted"               validate_email "user@example.com"
+assert_fails    "email without domain dot rejected"  validate_email "user@example"
+assert_fails    "email with space rejected"          validate_email "user @example.com"
+
+# ---------------------------------------------------------------------------
+# providers/gravatar.sh — URL construction
+# ---------------------------------------------------------------------------
+
+assert_equals "params appended with ? when URL has no query" \
+  "https://example.com/photo.jpg?s=512&d=mp" \
+  "$(_gravatar_append_params "https://example.com/photo.jpg" 512 mp)"
+
+assert_equals "params appended with & when URL already has a query" \
+  "https://example.com/photo.jpg?v=2&s=512&d=mp" \
+  "$(_gravatar_append_params "https://example.com/photo.jpg?v=2" 512 mp)"
+
+# ---------------------------------------------------------------------------
+# providers/gravatar.sh — profile JSON parsing
+# ---------------------------------------------------------------------------
+
+assert_equals "photo value preferred over thumbnailUrl" \
+  "https://example.com/photo.jpg" \
+  "$(_gravatar_photo_url_from_profile \
+    '{"entry":[{"photos":[{"value":"https:\/\/example.com\/photo.jpg"}],"thumbnailUrl":"https:\/\/example.com\/thumb.jpg"}]}')"
+
+assert_equals "falls back to thumbnailUrl when photos are absent" \
+  "https://example.com/thumb.jpg" \
+  "$(_gravatar_photo_url_from_profile '{"entry":[{"thumbnailUrl":"https:\/\/example.com\/thumb.jpg"}]}')"
+
+# Pretty-printed JSON broke the previous grep-based parser.
+assert_equals "pretty-printed profile JSON is parsed" \
+  "https://example.com/photo.jpg" \
+  "$(_gravatar_photo_url_from_profile '{
+     "entry": [
+       {
+         "hash": "abc",
+         "photos": [ { "value": "https://example.com/photo.jpg", "type": "thumbnail" } ]
+       }
+     ]
+   }')"
+
+# An unrelated "value" key must not be mistaken for the photo URL.
+assert_equals "unrelated value keys are ignored" \
+  "https://example.com/photo.jpg" \
+  "$(_gravatar_photo_url_from_profile '{
+     "entry": [
+       {
+         "emails": [ { "primary": "true", "value": "someone@example.com" } ],
+         "photos": [ { "value": "https://example.com/photo.jpg" } ]
+       }
+     ]
+   }')"
+
+assert_equals "profile without any photo yields empty string" \
+  "" "$(_gravatar_photo_url_from_profile '{"entry":[{}]}')"
+
+assert_fails "invalid profile JSON reports failure" \
+  _gravatar_photo_url_from_profile 'not json at all'
+
+# ---------------------------------------------------------------------------
+# providers/gravatar.sh — email path builds the hashed avatar URL
 # ---------------------------------------------------------------------------
 
 expected_hash="0bc83cb571cd1c50ba6f3e8a78ef1346"  # md5("myemailaddress@example.com")
-actual_hash="$(printf '%s' "myemailaddress@example.com" | md5sum | awk '{print $1}')"
-assert_equals "md5 hash matches known value" "$expected_hash" "$actual_hash"
+PROVIDER_URL=""
+SOURCE_LABEL=""
+gravatar_resolve_url "" "$(normalize_email "MyEmailAddress@Example.COM")" 512 mp
+assert_equals "email path builds hashed avatar URL" \
+  "https://www.gravatar.com/avatar/${expected_hash}?s=512&d=mp" "$PROVIDER_URL"
+assert_equals "email path sets SOURCE_LABEL" "myemailaddress@example.com" "$SOURCE_LABEL"
 
-# Normalise-then-hash: store in variable first (command substitution strips trailing newline)
-# matching the behaviour of the main script which assigns EMAIL=$(... | xargs) then hashes it
-_norm="$(printf '%s' "MyEmailAddress@Example.COM" | tr '[:upper:]' '[:lower:]' | xargs)"
-actual_hash2="$(printf '%s' "$_norm" | md5sum | awk '{print $1}')"
-assert_equals "normalised email hash matches known value" "$expected_hash" "$actual_hash2"
-
-# ---------------------------------------------------------------------------
-# username trimming (xargs is used in the main script)
-# ---------------------------------------------------------------------------
-
-trim_username() { printf '%s' "$1" | xargs; }
-assert_equals "username leading/trailing stripped" "johndoe" "$(trim_username "  johndoe  ")"
-assert_equals "username already clean"             "jane"    "$(trim_username "jane")"
-
-# ---------------------------------------------------------------------------
-# URL parameter appending
-# ---------------------------------------------------------------------------
-
-build_url_hash() {
-  local hash="$1" size="$2" default_style="$3"
-  printf 'https://www.gravatar.com/avatar/%s?s=%s&d=%s' "$hash" "$size" "$default_style"
-}
-
-result="$(build_url_hash "abc123" "512" "mp")"
-assert_equals "hash URL correctly formed" \
-  "https://www.gravatar.com/avatar/abc123?s=512&d=mp" "$result"
-
-# URL with existing query string gets & appended
-url_base="https://example.com/photo.jpg?v=2"
-url_with_params="${url_base}&s=512&d=mp"
-assert_equals "URL with existing query string gets & appended" \
-  "https://example.com/photo.jpg?v=2&s=512&d=mp" "$url_with_params"
-
-# URL without query string gets ? appended
-url_plain="https://example.com/photo.jpg"
-url_with_question="${url_plain}?s=512&d=mp"
-assert_equals "URL without query string gets ? appended" \
-  "https://example.com/photo.jpg?s=512&d=mp" "$url_with_question"
+PROVIDER_URL=""
+assert_fails "empty identity reports failure" gravatar_resolve_url "" "" 512 mp
 
 # ---------------------------------------------------------------------------
 # Summary
