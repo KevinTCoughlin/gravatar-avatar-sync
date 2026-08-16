@@ -18,10 +18,13 @@ It updates:
 ## Requirements
 
 - `bash`
+- `awk`
 - `curl`
 - `gdbus`
 - `file`
 - `jq`
+- `md5sum` and `realpath` (usually provided by `coreutils`)
+- AccountsService (`accounts-daemon`)
 - `systemd --user`
 
 ## Quick Start
@@ -93,7 +96,7 @@ printf '%s\n' 'your-email@example.com' > ~/.config/gravatar-avatar-sync/email
 | `GRAVATAR_CURL_RETRY` | `3` | Curl retry attempts |
 | `GRAVATAR_CURL_RETRY_DELAY` | `2` | Delay between curl retries (seconds) |
 | `GRAVATAR_CURL_MAX_FILESIZE` | `10485760` | Maximum accepted download size (bytes) |
-| `GRAVATAR_ALLOW_ROOT` | _(unset)_ | Set to `1` to allow running as root (updates root's avatar, not yours) |
+| `GRAVATAR_ALLOW_ROOT` | _(unset)_ | Set exactly to `1` to allow running as root (updates root's avatar, not yours) |
 
 ### Image size behavior
 
@@ -193,7 +196,11 @@ bash tests/integration/run.sh  # file writes and D-Bus fallback side effects
 ./uninstall.sh
 ```
 
-This disables the timer, removes the service and timer unit files, and deletes the installed binary. Your configuration files in `~/.config/gravatar-avatar-sync/` and cached avatar in `~/.local/share/avatars/` are preserved.
+This disables the timer, removes the service and timer unit files, and deletes
+the installed binary and libraries. Configuration under
+`$XDG_CONFIG_HOME/gravatar-avatar-sync/` (default:
+`~/.config/gravatar-avatar-sync/`) and cached avatars under `$XDG_DATA_HOME`
+(default: `~/.local/share/`) are preserved.
 
 ## Troubleshooting
 

@@ -49,7 +49,7 @@ require_tools() {
 # Running under sudo would sync root's home and root's AccountsService entry,
 # which is virtually never what the caller intends.
 require_non_root() {
-  if [[ "$(id -u)" -eq 0 && -z "${GRAVATAR_ALLOW_ROOT:-}" ]]; then
+  if [[ "$(id -u)" -eq 0 && "${GRAVATAR_ALLOW_ROOT:-}" != "1" ]]; then
     echo "Refusing to run as root: this would update root's avatar, not yours." >&2
     echo "Run as your own user, or set GRAVATAR_ALLOW_ROOT=1 to override." >&2
     exit 1

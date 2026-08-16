@@ -28,7 +28,9 @@ cd gravatar-avatar-sync
 ./install.sh
 ```
 
-This installs the sync script, systemd service, and timer into your home directory (`~/.local/bin` and `~/.config/systemd/user/`).
+This installs the sync script and libraries under `~/.local/`, and installs
+the systemd service and timer under `$XDG_CONFIG_HOME/systemd/user/` (default:
+`~/.config/systemd/user/`).
 
 **3. Set your Gravatar identity:**
 
@@ -36,12 +38,15 @@ Set either a username (recommended for profile photos) or email:
 
 ```bash
 mkdir -p ~/.config/gravatar-avatar-sync
+chmod 700 ~/.config/gravatar-avatar-sync
 
 # Option A – Gravatar username (recommended):
 printf '%s\n' 'your-gravatar-username' > ~/.config/gravatar-avatar-sync/username
+chmod 600 ~/.config/gravatar-avatar-sync/username
 
 # Option B – Email address:
 printf '%s\n' 'your-email@example.com' > ~/.config/gravatar-avatar-sync/email
+chmod 600 ~/.config/gravatar-avatar-sync/email
 ```
 
 **4. Start the service:**
@@ -58,4 +63,5 @@ The timer is already enabled by the installer and will run automatically every 1
 ./uninstall.sh
 ```
 
-This stops and disables the timer and removes installed files. Your config directory (`~/.config/gravatar-avatar-sync/`) is preserved.
+This stops and disables the timer and removes installed files. Your config
+directory and cached avatar are preserved.
