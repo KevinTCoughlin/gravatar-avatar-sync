@@ -63,7 +63,8 @@ without manually cloning the repository.
    - Sets `Source0` to the GitHub release tarball URL.
    - Installs the script to `/usr/bin/gravatar-avatar-sync`.
    - Installs the systemd units to `/usr/lib/systemd/user/`.
-   - Declares `Requires: bash curl gdbus-tools file`.
+   - Declares dependencies on `accountsservice`, `bash`, `coreutils`, `curl`,
+     `file`, `gawk`, `glib2` (for `gdbus`), `jq`, and `systemd`.
 2. Test locally with `rpmbuild` or `mock`.
 3. Create the COPR project and enable GitHub webhook or add a CI step.
 4. Tag `v0.1.0` → verify COPR build succeeds and the package installs cleanly.
@@ -82,7 +83,7 @@ without manually cloning the repository.
 1. Write `PKGBUILD` that:
    - Uses the GitHub release tarball as the source.
    - Installs the script, systemd units, and documentation.
-   - Sets `depends=('bash' 'curl' 'dbus-utils' 'file')`.
+   - Sets `depends=('accountsservice' 'bash' 'coreutils' 'curl' 'file' 'gawk' 'glib2' 'jq' 'systemd')`.
 2. Generate `.SRCINFO` with `makepkg --printsrcinfo > .SRCINFO`.
 3. Push to the AUR (requires an AUR account and SSH key).
 4. Add a manual update step to the release checklist.
@@ -124,7 +125,8 @@ without manually cloning the repository.
 
 **Steps**
 1. Create `packaging/deb/debian/` directory with:
-   - `control` – package metadata and `Depends: bash, curl, dbus-x11, file`.
+   - `control` – package metadata with `Depends: accountsservice, bash,
+     coreutils, curl, file, jq, libglib2.0-bin, systemd`.
    - `rules` – simple `dh $@` with install overrides.
    - `install` – file list mapping to `/usr/bin/` and
      `/lib/systemd/user/`.

@@ -24,6 +24,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   interrupted run can no longer leave a truncated `~/.face`.
 - `install.sh` now installs every library module it finds, so adding a module
   no longer requires editing the installer.
+- Installer and uninstaller paths now honor `XDG_CONFIG_HOME`; the installer
+  also validates runtime dependencies and secures the identity config
+  directory with mode `0700`.
 - The systemd unit is sandboxed (`NoNewPrivileges`, `PrivateTmp`,
   `SystemCallFilter=@system-service`, restricted address families, …), the
   timer applies a randomized delay, and the unusable `network-online.target`
@@ -41,9 +44,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Whitespace trimming no longer uses `xargs`, which mangled or failed on values
   containing quotes.
 - Running as root (for example via `sudo`) is refused by default; it silently
-  updated root's avatar instead of the invoking user's.
+  updated root's avatar instead of the invoking user's. The override must now
+  be set explicitly to `GRAVATAR_ALLOW_ROOT=1`, including for uninstall.
 - Integration tests isolate `XDG_CONFIG_HOME`/`XDG_DATA_HOME` in addition to
   `HOME`; previously they overwrote the real user's avatar cache.
+- Release automation now rejects malformed tags or missing changelog sections,
+  including SemVer numeric identifiers with leading zeroes, and GitHub Actions
+  dependencies are pinned to immutable commits.
+- Installation now checks for the `awk` and `realpath` runtime dependencies
+  before enabling the timer.
 
 ## [0.1.0] - 2026-05-28
 

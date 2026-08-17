@@ -50,6 +50,7 @@ teardown_case_env() {
     wait "$SOCKET_PID" 2>/dev/null || true
     unset SOCKET_PID
   fi
+  rm -f "${HOST_DBUS_SOCKET:-}"
   rm -rf "$CASE_ROOT"
   unset HOST_DBUS_SOCKET MOCK_MIME_TYPE MOCK_GDBUS_PRIMARY_RESULT MOCK_GDBUS_FALLBACK_RESULT
 }
@@ -82,7 +83,8 @@ test_success_primary_dbus_and_file_writes() {
 }
 
 start_unix_socket() {
-  export HOST_DBUS_SOCKET="$CASE_ROOT/system_bus_socket"
+  export HOST_DBUS_SOCKET="${TMPDIR:-$CASE_ROOT}/gravatar-sync-$BASHPID.sock"
+  rm -f "$HOST_DBUS_SOCKET"
   TEST_SOCKET_PATH="$HOST_DBUS_SOCKET" python3 - <<'PY' &
 import os
 import socket

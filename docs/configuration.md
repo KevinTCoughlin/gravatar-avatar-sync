@@ -29,7 +29,12 @@ The script resolves your Gravatar identity in the following order (first match w
 | `GRAVATAR_DEFAULT` | `mp` | Default avatar style when no Gravatar is found (e.g. `mp`, `identicon`, `retro`) |
 | `GRAVATAR_SIZE` | auto-detected | Pixel size of the downloaded avatar image |
 | `GRAVATAR_CURL_MAX_FILESIZE` | `10485760` | Maximum accepted download size in bytes |
-| `GRAVATAR_ALLOW_ROOT` | _(unset)_ | Set to `1` to allow running as root (updates root's avatar, not yours) |
+| `GRAVATAR_ALLOW_ROOT` | _(unset)_ | Set exactly to `1` to allow running as root (updates root's avatar, not yours) |
+
+Configuration files are read from
+`$XDG_CONFIG_HOME/gravatar-avatar-sync/` (default:
+`~/.config/gravatar-avatar-sync/`). Because the email file contains account
+information, keep the directory mode `0700` and files mode `0600`.
 
 ## Image size behavior
 

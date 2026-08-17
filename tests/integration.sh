@@ -216,7 +216,8 @@ if command -v shellcheck >/dev/null 2>&1; then
       "$MAIN_SCRIPT" \
       "$REPO_ROOT/install.sh" \
       "$REPO_ROOT/uninstall.sh"
-    find "$REPO_ROOT/lib" "$REPO_ROOT/tests" -type f \( -name '*.sh' -o -name '*.bash' \)
+    find "$REPO_ROOT/lib" "$REPO_ROOT/scripts" "$REPO_ROOT/tests" \
+      -type f \( -name '*.sh' -o -name '*.bash' \)
   )
   if shellcheck -x --source-path=SCRIPTDIR "${shell_scripts[@]}" 2>&1; then
     pass_test "shellcheck passes on all shell scripts"
