@@ -1,0 +1,13 @@
+version: 2
+# GitHub Actions bumps use the `ci:` prefix. Actions are pinned by SHA with
+# a version comment; Dependabot updates both.
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: ci
+    groups:
+      github-actions:
+        patterns: ["*"]
